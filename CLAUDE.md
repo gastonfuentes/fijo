@@ -19,6 +19,7 @@ src/
     page.tsx              -> Login; redirige a /dashboard si hay sesion.
     auth/callback/        -> Callback client-side del OAuth de Google.
     dashboard/            -> Estadisticas de jugadores.
+    grupos/               -> Lista, edicion de nombre y eliminacion de grupos.
     jugadores/            -> CRUD de jugadores con niveles.
     sorteo/               -> Seleccion de presentes y sorteo balanceado.
     partidos/             -> Historial, resultados y eliminacion de partidos.
@@ -60,6 +61,7 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - Cada partido registra: asistentes, equipos sorteados y resultado
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"
+- La seccion `/grupos` permite renombrar grupos y eliminar turnos que ya no se usan.
 
 ## Variables de entorno
 

@@ -11,7 +11,7 @@ interface GroupContextType {
   setActiveGroup: (g: Group) => void;
   loading: boolean;
   createNewGroup: (name: string) => Promise<string | undefined>;
-  reload: () => Promise<void>;
+  reload: (preferredGroupId?: string) => Promise<void>;
 }
 
 const GroupContext = createContext<GroupContextType>({

@@ -12,11 +12,12 @@ The product flow is:
 
 1. Sign in with Google through Supabase Auth.
 2. Create or select a football group.
-3. Add players and classify each one by skill level.
-4. Select today's attendees.
-5. Generate two balanced teams.
-6. Save the match day and later register the winner.
-7. Review attendance and result stats in the dashboard.
+3. Manage group names or delete groups that are no longer used.
+4. Add players and classify each one by skill level.
+5. Select today's attendees.
+6. Generate two balanced teams.
+7. Save the match day and later register the winner.
+8. Review attendance and result stats in the dashboard.
 
 ## Stack
 
@@ -50,6 +51,7 @@ src/
     page.tsx              Login and authenticated redirect.
     auth/callback/        Google OAuth callback page.
     dashboard/            Group stats and ranking.
+    grupos/               List, rename, and delete groups.
     jugadores/            Player CRUD and skill levels.
     sorteo/               Attendee selection and balanced team draw.
     partidos/             Saved match days, winners, and deletion.
