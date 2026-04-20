@@ -5,14 +5,8 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
 import { getPlayers, getMatchDays } from "@/lib/db";
-import { Player, MatchDay, PlayerStats, SkillLevel } from "@/types";
+import { Player, MatchDay, PlayerStats } from "@/types";
 import Link from "next/link";
-
-const LEVEL_COLORS: Record<SkillLevel, string> = {
-  bueno: "border border-fijo-200 bg-fijo-100 text-fijo-800",
-  tranqui: "border border-amber-200 bg-amber-50 text-amber-800",
-  malo: "border border-red-200 bg-red-50 text-red-700",
-};
 
 function computeStats(players: Player[], matchDays: MatchDay[]): PlayerStats[] {
   const totalMatchDays = matchDays.length;
@@ -41,7 +35,6 @@ function computeStats(players: Player[], matchDays: MatchDay[]): PlayerStats[] {
     return {
       playerId: p.id,
       name: p.name,
-      level: p.level,
       gamesPlayed: wins + losses,
       wins,
       losses,
@@ -49,6 +42,11 @@ function computeStats(players: Player[], matchDays: MatchDay[]): PlayerStats[] {
       absences: totalMatchDays - attendance,
     };
   });
+}
+
+function getPlayerAttendanceRate(player: PlayerStats, totalMatches: number) {
+  if (totalMatches === 0) return 0;
+  return Math.round((player.attendance / totalMatches) * 100);
 }
 
 export default function DashboardPage() {
@@ -77,7 +75,12 @@ export default function DashboardPage() {
 
   const sorted = [...stats].sort((a, b) => {
     if (sortBy === "wins") return b.wins - a.wins;
-    if (sortBy === "attendance") return b.attendance - a.attendance;
+    if (sortBy === "attendance") {
+      return (
+        getPlayerAttendanceRate(b, totalMatches) -
+          getPlayerAttendanceRate(a, totalMatches) || b.attendance - a.attendance
+      );
+    }
     return b.absences - a.absences;
   });
   const attendanceRate =
@@ -212,7 +215,7 @@ export default function DashboardPage() {
                     <tr className="border-b border-fijo-100 bg-fijo-50/70 text-[var(--muted)]">
                       <th className="px-4 py-3 text-left font-bold">#</th>
                       <th className="px-4 py-3 text-left font-bold">Jugador</th>
-                      <th className="px-4 py-3 text-center font-bold">Nivel</th>
+                      <th className="px-4 py-3 text-center font-bold">% Asist.</th>
                       <th className="px-4 py-3 text-center font-bold">PJ</th>
                       <th className="px-4 py-3 text-center font-bold">G</th>
                       <th className="px-4 py-3 text-center font-bold">P</th>
@@ -230,12 +233,8 @@ export default function DashboardPage() {
                           {i + 1}
                         </td>
                         <td className="px-4 py-3 font-bold text-fijo-900">{s.name}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span
-                            className={`level-pill ${LEVEL_COLORS[s.level]}`}
-                          >
-                            {s.level[0].toUpperCase() + s.level.slice(1)}
-                          </span>
+                        <td className="px-4 py-3 text-center font-mono font-black text-fijo-800">
+                          {getPlayerAttendanceRate(s, totalMatches)}%
                         </td>
                         <td className="px-4 py-3 text-center font-mono">
                           {s.gamesPlayed}
