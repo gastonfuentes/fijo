@@ -79,6 +79,41 @@ create policy "owner can manage members"
     )
   );
 
+-- Crea un grupo y agrega al usuario autenticado como miembro en la misma operacion.
+create or replace function public.create_group_with_owner_membership(group_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_group_id uuid;
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if length(trim(group_name)) = 0 then
+    raise exception 'El nombre del grupo es obligatorio';
+  end if;
+
+  insert into public.groups (name, owner_id)
+  values (trim(group_name), current_user_id)
+  returning id into new_group_id;
+
+  insert into public.group_members (group_id, user_id)
+  values (new_group_id, current_user_id);
+
+  return new_group_id;
+end;
+$$;
+
+revoke all on function public.create_group_with_owner_membership(text) from public;
+grant execute on function public.create_group_with_owner_membership(text) to authenticated;
+
+notify pgrst, 'reload schema';
+
 -- players policies
 create policy "members can view players"
   on players for select

@@ -11,16 +11,29 @@ export function useGroup() {
   const [activeGroup, setActiveGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadGroups = useCallback(async () => {
-    if (!user) return;
+  const loadGroups = useCallback(async (preferredGroupId?: string) => {
+    if (!user) {
+      setGroups([]);
+      setActiveGroup(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const g = await getUserGroups(user.id);
     setGroups(g);
-    if (g.length > 0 && !activeGroup) {
-      setActiveGroup(g[0]);
+    if (g.length > 0) {
+      setActiveGroup((prev) => {
+        const preferredGroup = preferredGroupId
+          ? g.find((group) => group.id === preferredGroupId)
+          : null;
+
+        return preferredGroup ?? prev ?? g[0];
+      });
+    } else {
+      setActiveGroup(null);
     }
     setLoading(false);
-  }, [user, activeGroup]);
+  }, [user]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -29,8 +42,8 @@ export function useGroup() {
 
   const create = async (name: string) => {
     if (!user) return;
-    const id = await createGroup(name, user.id);
-    await loadGroups();
+    const id = await createGroup(name);
+    await loadGroups(id);
     return id;
   };
 

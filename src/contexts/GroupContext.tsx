@@ -29,7 +29,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
   const [activeGroup, setActiveGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadGroups = useCallback(async () => {
+  const loadGroups = useCallback(async (preferredGroupId?: string) => {
     if (!user) {
       setGroups([]);
       setActiveGroup(null);
@@ -40,7 +40,15 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     const g = await getUserGroups(user.id);
     setGroups(g);
     if (g.length > 0) {
-      setActiveGroup((prev) => prev && g.find((x) => x.id === prev.id) ? prev : g[0]);
+      setActiveGroup((prev) => {
+        const preferredGroup = preferredGroupId
+          ? g.find((group) => group.id === preferredGroupId)
+          : null;
+
+        return preferredGroup ?? (prev && g.find((x) => x.id === prev.id) ? prev : g[0]);
+      });
+    } else {
+      setActiveGroup(null);
     }
     setLoading(false);
   }, [user]);
@@ -53,8 +61,8 @@ export function GroupProvider({ children }: { children: ReactNode }) {
   const createNewGroup = async (name: string) => {
     if (!user) return;
     try {
-      const id = await createGroup(name, user.id);
-      await loadGroups();
+      const id = await createGroup(name);
+      await loadGroups(id);
       return id;
     } catch (err) {
       console.error("createGroup error:", JSON.stringify(err));

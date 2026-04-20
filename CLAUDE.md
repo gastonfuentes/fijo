@@ -51,6 +51,8 @@ Tablas:
 
 El schema completo con RLS está en `supabase-schema.sql`.
 
+Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supabase, genera el UUID del grupo en el navegador, inserta en `groups` y despues inserta al owner en `group_members`. No depender de un RPC PostgREST para este flujo salvo que la funcion SQL correspondiente este desplegada y verificada en Supabase.
+
 ## Modelo de negocio
 
 - Niveles de jugadores: **bueno**, **tranqui**, **malo**
@@ -66,6 +68,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://hduumplgmjzudmwztffp.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
+No usar ni publicar `SUPABASE_SERVICE_ROLE_KEY` en el frontend. La app funciona con anon/publishable key y RLS.
+
 ## Comandos
 
 ```bash
@@ -73,6 +77,34 @@ npm run dev    # desarrollo
 npm run build  # verificar build
 npm run lint   # lint
 ```
+
+## Git y publicacion
+
+- `main` es la rama de produccion.
+- `codex` es la rama de trabajo para cambios hechos por agentes y previews.
+- Si el usuario pide subir cambios a GitHub, hacer commit/push solamente. No abrir PR automaticamente; el usuario crea los PRs.
+- No commitear `.codex/` ni `.mcp.json` salvo pedido explicito.
+
+## Deploy recomendado
+
+Preferir Vercel para este proyecto porque es una app Next.js 16 con App Router. Configurar `main` como Production Branch y usar `codex` u otras ramas para preview deployments.
+
+Variables en Vercel:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://hduumplgmjzudmwztffp.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+NODE_VERSION=22
+```
+
+En Supabase Auth, permitir los callbacks:
+
+```
+http://localhost:3000/auth/callback
+https://<dominio-produccion>/auth/callback
+```
+
+Si se quiere probar login en previews de Vercel, agregar tambien un patron de redirect URL para previews.
 
 ## Auth flow
 
