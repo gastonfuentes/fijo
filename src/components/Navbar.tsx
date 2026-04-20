@@ -17,6 +17,7 @@ export default function Navbar() {
     { href: "/jugadores", label: "Jugadores" },
     { href: "/sorteo", label: "Sorteo" },
     { href: "/partidos", label: "Partidos" },
+    { href: "/grupos", label: "Grupos" },
   ];
 
   return (

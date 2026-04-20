@@ -72,6 +72,33 @@ export async function getUserGroups(userId: string): Promise<Group[]> {
   return groups;
 }
 
+export async function updateGroup(groupId: string, name: string) {
+  const supabase = createClient();
+  const groupName = name.trim();
+  if (!groupName) throw new Error("El nombre del grupo es obligatorio.");
+
+  const { error } = await supabase
+    .from("groups")
+    .update({ name: groupName })
+    .eq("id", groupId)
+    .select("id")
+    .single();
+
+  if (error) throw error;
+}
+
+export async function deleteGroup(groupId: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("groups")
+    .delete()
+    .eq("id", groupId)
+    .select("id")
+    .single();
+
+  if (error) throw error;
+}
+
 // ---- Players ----
 
 export async function addPlayer(
