@@ -20,8 +20,8 @@ src/
     auth/callback/        -> Callback client-side del OAuth de Google.
     dashboard/            -> Estadisticas de jugadores.
     grupos/               -> Lista, edicion de nombre y eliminacion de grupos.
-    jugadores/            -> CRUD de jugadores con niveles.
-    sorteo/               -> Seleccion de presentes y sorteo balanceado.
+    jugadores/            -> CRUD de jugadores.
+    sorteo/               -> Seleccion de presentes, marca rapida de mejores y sorteo balanceado.
     partidos/             -> Historial, resultados y eliminacion de partidos.
   components/
     Navbar.tsx
@@ -56,8 +56,8 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 
 ## Modelo de negocio
 
-- Niveles de jugadores: **bueno**, **tranqui**, **malo**
-- El sorteo distribuye jugadores equitativamente por nivel (no todos los buenos en el mismo equipo)
+- Niveles de jugadores: **bueno**, **tranqui**, **malo**. El alta de jugadores no muestra selector de nivel; los nuevos se guardan como `tranqui`.
+- En `/sorteo`, antes de sortear se marcan rapido los mejores del dia. Esos jugadores se tratan temporalmente como `bueno` para repartirlos entre equipos.
 - Cada partido registra: asistentes, equipos sorteados y resultado
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"

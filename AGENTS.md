@@ -13,8 +13,8 @@ The product flow is:
 1. Sign in with Google through Supabase Auth.
 2. Create or select a football group.
 3. Manage group names or delete groups that are no longer used.
-4. Add players and classify each one by skill level.
-5. Select today's attendees.
+4. Add players to the group.
+5. Select today's attendees and quickly mark the best players for that match.
 6. Generate two balanced teams.
 7. Save the match day and later register the winner.
 8. Review attendance and result stats in the dashboard.
@@ -52,8 +52,8 @@ src/
     auth/callback/        Google OAuth callback page.
     dashboard/            Group stats and ranking.
     grupos/               List, rename, and delete groups.
-    jugadores/            Player CRUD and skill levels.
-    sorteo/               Attendee selection and balanced team draw.
+    jugadores/            Player CRUD.
+    sorteo/               Attendee selection, quick best-player checks, and balanced team draw.
     partidos/             Saved match days, winners, and deletion.
   components/
     Navbar.tsx
@@ -72,12 +72,12 @@ src/
 ## Domain Model
 
 - `SkillLevel`: `bueno`, `tranqui`, `malo`.
-- `Player`: a player belongs to a group and has a skill level.
+- `Player`: a player belongs to a group and has a stored skill level for compatibility.
 - `Group`: a recurring football group owned by a Supabase auth user.
 - `MatchDay`: one saved match with attendees, `teamA`, `teamB`, and optional winner.
 - `PlayerStats`: dashboard-only derived stats, computed from players and match days.
 
-The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams.
+The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw.
 
 ## Supabase
 
