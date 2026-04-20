@@ -29,7 +29,6 @@ export interface Group {
 export interface PlayerStats {
   playerId: string;
   name: string;
-  level: SkillLevel;
   gamesPlayed: number;
   wins: number;
   losses: number;
