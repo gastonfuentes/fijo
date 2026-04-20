@@ -14,17 +14,35 @@ type UserGroupRelation = {
 
 // ---- Groups ----
 
-export async function createGroup(name: string, ownerId: string): Promise<string> {
+export async function createGroup(name: string): Promise<string> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("groups")
-    .insert({ name, owner_id: ownerId })
-    .select("id")
-    .single();
-  if (error) throw error;
+  const groupName = name.trim();
+  if (!groupName) throw new Error("El nombre del grupo es obligatorio.");
 
-  await supabase.from("group_members").insert({ group_id: data.id, user_id: ownerId });
-  return data.id;
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  if (!user) throw new Error("Tenes que iniciar sesion para crear un grupo.");
+
+  const groupId = globalThis.crypto.randomUUID();
+
+  const { error: groupError } = await supabase
+    .from("groups")
+    .insert({ id: groupId, name: groupName, owner_id: user.id });
+  if (groupError) throw groupError;
+
+  const { error: memberError } = await supabase
+    .from("group_members")
+    .insert({ group_id: groupId, user_id: user.id });
+
+  if (memberError) {
+    await supabase.from("groups").delete().eq("id", groupId);
+    throw memberError;
+  }
+
+  return groupId;
 }
 
 export async function getUserGroups(userId: string): Promise<Group[]> {

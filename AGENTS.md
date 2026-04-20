@@ -35,6 +35,13 @@ npm run lint
 
 Run `npm run build` before shipping structural changes when feasible. Use `npm run lint` for focused UI or TypeScript edits.
 
+## Git and Publishing
+
+- `main` is the production branch.
+- `codex` is the working branch for agent changes and preview deployments.
+- When asked to publish changes, commit and push the requested branch only. Do not open pull requests automatically; the owner creates PRs manually.
+- Keep local agent/tooling files such as `.codex/` and `.mcp.json` out of commits unless the owner explicitly asks to version them.
+
 ## Project Structure
 
 ```text
@@ -83,12 +90,42 @@ Tables:
 
 All tables use RLS. Data access should go through `src/lib/db.ts` unless there is a strong reason to add a new helper.
 
+Group creation is handled in `src/lib/db.ts` with the authenticated Supabase browser user: generate the group UUID client-side, insert into `groups`, then insert the owner into `group_members`. Do not make the app depend on a PostgREST RPC for this flow unless the matching SQL function is deployed and verified in Supabase.
+
 Required public environment variables:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
+
+Do not add Supabase service-role keys to frontend code or public deployment environments.
+
+## Deployment
+
+Vercel is the preferred deployment target for this Next.js app. Configure `main` as the production branch and use branches such as `codex` for previews.
+
+Required Vercel environment variables:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+Recommended platform/runtime variable:
+
+```bash
+NODE_VERSION=22
+```
+
+Supabase Auth must allow the deployed callback URL:
+
+```text
+https://<production-domain>/auth/callback
+http://localhost:3000/auth/callback
+```
+
+For Vercel previews, add an appropriate preview redirect URL pattern in Supabase Auth if OAuth login should work on preview deployments.
 
 ## Implementation Notes
 
