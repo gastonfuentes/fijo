@@ -60,6 +60,8 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 
 - Niveles de jugadores: **bueno**, **tranqui**, **malo**. El alta de jugadores no muestra selector de nivel; los nuevos se guardan como `tranqui`.
 - En `/sorteo`, todos los jugadores arrancan deseleccionados para cada partido. El usuario marca manualmente quienes estan presentes antes del sorteo.
+- En `/sorteo`, tambien se pueden crear jugadores nuevos sin salir de esa pantalla para acelerar la organizacion del partido.
+- Un jugador creado rapido desde `/sorteo` se guarda como `tranqui` y queda marcado como presente automaticamente.
 - En `/sorteo`, los mejores del dia solo se pueden marcar entre jugadores presentes. Esos jugadores se tratan temporalmente como `bueno` para repartirlos entre equipos.
 - Si un jugador deja de estar marcado como presente en `/sorteo`, tambien debe perder cualquier marca temporal de destacado de ese partido.
 - Cada partido registra: asistentes, equipos sorteados y resultado
@@ -129,4 +131,5 @@ Si se quiere probar login en previews de Vercel, agregar tambien un patron de re
 - Las paginas protegidas deben usar `ProtectedRoute`.
 - Las paginas dependientes de grupo deben usar `GroupSetup` y esperar `activeGroup`.
 - En `/sorteo`, `selected` sigue siendo la fuente de verdad de los asistentes del dia y de `match_days.attendees`.
+- En `/sorteo`, el alta rapida de jugadores debe conservar la seleccion actual del partido y sumar al nuevo jugador como presente.
 - Cuando cambie un flujo importante o una decision tecnica relevante, actualizar `CLAUDE.md` y `AGENTS.md` en la misma tanda de trabajo.

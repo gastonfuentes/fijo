@@ -23,6 +23,8 @@ Current `/sorteo` behavior:
 
 - All players start deselected by default for each match day.
 - The user marks attendees manually, one by one, before running the draw.
+- The user can also create a new player directly from `/sorteo` for faster match-day setup.
+- Players created from `/sorteo` are stored as `tranqui` and auto-selected as present for that match.
 - "Best player" quick marks only apply to players currently marked as present.
 - `match_days.attendees` stores only the players selected for that day.
 
@@ -85,7 +87,7 @@ src/
 - `MatchDay`: one saved match with attendees, `teamA`, `teamB`, and optional winner.
 - `PlayerStats`: dashboard-only derived stats, computed from players and match days.
 
-The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw. On `/sorteo`, presence is a temporary per-match selection: players start as absent, attendees are selected manually, and removing a player from the attendee list must also remove any temporary "bueno" mark for that match.
+The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw. On `/sorteo`, presence is a temporary per-match selection: players start as absent, attendees are selected manually, newly created players can be added inline and auto-selected as present, and removing a player from the attendee list must also remove any temporary "bueno" mark for that match.
 
 ## Supabase
 
@@ -142,7 +144,7 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Most route components are client components because auth, routing, and Supabase browser state are client-side today.
 - Keep route protection consistent with `ProtectedRoute`.
 - Keep group-dependent pages wrapped with `GroupSetup` and render the main page content only when `activeGroup` exists.
-- In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, and best-player toggles must stay disabled for absent players.
+- In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, best-player toggles must stay disabled for absent players, and quick-created players should be added as `tranqui` and marked present immediately.
 - Preserve the Spanish UI copy and the informal football vocabulary already used in the app.
 - Prefer the existing `@/` import alias and local domain types from `src/types`.
 - Do not bypass RLS assumptions by adding service-role logic to the frontend.
