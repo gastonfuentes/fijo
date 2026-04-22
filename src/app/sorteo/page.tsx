@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { getPlayers, createMatchDay } from "@/lib/db";
+import { addPlayer, getPlayers, createMatchDay } from "@/lib/db";
 import { sorteoBalanceado } from "@/lib/sorteo";
 import { Player } from "@/types";
 
@@ -68,6 +68,9 @@ export default function SorteoPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [addingPlayer, setAddingPlayer] = useState(false);
+  const [addPlayerError, setAddPlayerError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!activeGroup) return;
@@ -132,6 +135,45 @@ export default function SorteoPage() {
     setSaved(false);
   };
 
+  const handleAddPlayer = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activeGroup) return;
+
+    const trimmedName = newPlayerName.trim();
+    if (!trimmedName) return;
+
+    setAddingPlayer(true);
+    setAddPlayerError(null);
+
+    try {
+      const playerId = await addPlayer(activeGroup.id, trimmedName, "tranqui");
+      const createdPlayer: Player = {
+        id: playerId,
+        name: trimmedName,
+        level: "tranqui",
+        createdAt: Date.now(),
+      };
+
+      setPlayers((prev) =>
+        [...prev, createdPlayer].sort((a, b) => a.name.localeCompare(b.name, "es"))
+      );
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.add(playerId);
+        return next;
+      });
+      setTeamA([]);
+      setTeamB([]);
+      setSorted(false);
+      setSaved(false);
+      setNewPlayerName("");
+    } catch {
+      setAddPlayerError("No se pudo agregar el jugador. Intenta de nuevo.");
+    } finally {
+      setAddingPlayer(false);
+    }
+  };
+
   const handleSorteo = () => {
     const attending = players
       .filter((p) => selected.has(p.id))
@@ -193,18 +235,54 @@ export default function SorteoPage() {
               </div>
               <div className="skeleton mt-5 h-14" />
             </div>
-          ) : players.length < 2 ? (
-            <div className="surface mx-auto max-w-xl p-8 text-center">
-              <p className="eyebrow mb-2">faltan jugadores</p>
-              <h2 className="text-2xl font-black text-fijo-900">
-                Necesitas al menos 2 jugadores
-              </h2>
-              <p className="muted-copy mx-auto mt-3 max-w-md text-sm">
-                Agrega el plantel primero y volve para armar los equipos.
-              </p>
-            </div>
           ) : (
             <>
+              <form
+                onSubmit={handleAddPlayer}
+                className="surface mb-6 grid gap-4 p-4 md:grid-cols-[1fr_auto] md:items-end"
+              >
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold text-[var(--ink-soft)]">
+                    Agregar jugador rapido
+                  </span>
+                  <input
+                    type="text"
+                    value={newPlayerName}
+                    onChange={(event) => setNewPlayerName(event.target.value)}
+                    placeholder="Nombre del jugador"
+                    className="field"
+                  />
+                  <span className="mt-2 block text-sm text-[var(--muted)]">
+                    Se suma al plantel y queda marcado como presente al instante.
+                  </span>
+                </label>
+                <button
+                  type="submit"
+                  disabled={addingPlayer || !newPlayerName.trim()}
+                  className="btn-primary"
+                >
+                  {addingPlayer ? "Agregando..." : "Agregar y marcar presente"}
+                </button>
+                {addPlayerError && (
+                  <p className="md:col-span-2 text-sm font-semibold text-red-600">
+                    {addPlayerError}
+                  </p>
+                )}
+              </form>
+
+              {players.length < 2 ? (
+                <div className="surface mx-auto mb-6 max-w-xl p-8 text-center">
+                  <p className="eyebrow mb-2">faltan jugadores</p>
+                  <h2 className="text-2xl font-black text-fijo-900">
+                    Necesitas al menos 2 jugadores
+                  </h2>
+                  <p className="muted-copy mx-auto mt-3 max-w-md text-sm">
+                    Puedes cargar uno nuevo aca mismo y seguir con el sorteo sin
+                    volver a la seccion de jugadores.
+                  </p>
+                </div>
+              ) : null}
+
               <section className="surface mb-6 p-5">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -286,39 +364,51 @@ export default function SorteoPage() {
                 </div>
               </section>
 
-              <div className="mb-6 flex flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={handleSorteo}
-                  disabled={selected.size < 2}
-                  className="btn-primary flex-1 text-lg"
-                >
-                  Sortear equipos
-                </button>
-                {sorted && !saved && (
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="btn-secondary"
-                  >
-                    {saving ? "Guardando..." : "Guardar partido"}
-                  </button>
-                )}
-                {saved && (
-                  <span className="surface-solid flex items-center px-4 py-3 font-bold text-fijo-700">
-                    Guardado
-                  </span>
-                )}
-              </div>
-
-              {sorted && (
-                <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
-                  <TeamCard team={teamA} label="A" color="border-l-sky-500 bg-sky-50/70" />
-                  <div className="flex items-center justify-center rounded-lg border border-fijo-100 bg-white/70 px-4 py-3 text-2xl font-black text-[var(--muted)]">
-                    VS
+              {players.length >= 2 ? (
+                <>
+                  <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      onClick={handleSorteo}
+                      disabled={selected.size < 2}
+                      className="btn-primary flex-1 text-lg"
+                    >
+                      Sortear equipos
+                    </button>
+                    {sorted && !saved && (
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="btn-secondary"
+                      >
+                        {saving ? "Guardando..." : "Guardar partido"}
+                      </button>
+                    )}
+                    {saved && (
+                      <span className="surface-solid flex items-center px-4 py-3 font-bold text-fijo-700">
+                        Guardado
+                      </span>
+                    )}
                   </div>
-                  <TeamCard team={teamB} label="B" color="border-l-red-500 bg-red-50/70" />
-                </div>
-              )}
+
+                  {sorted && (
+                    <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+                      <TeamCard
+                        team={teamA}
+                        label="A"
+                        color="border-l-sky-500 bg-sky-50/70"
+                      />
+                      <div className="flex items-center justify-center rounded-lg border border-fijo-100 bg-white/70 px-4 py-3 text-2xl font-black text-[var(--muted)]">
+                        VS
+                      </div>
+                      <TeamCard
+                        team={teamB}
+                        label="B"
+                        color="border-l-red-500 bg-red-50/70"
+                      />
+                    </div>
+                  )}
+                </>
+              ) : null}
             </>
           )}
         </div>
