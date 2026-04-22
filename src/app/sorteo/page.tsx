@@ -74,9 +74,12 @@ export default function SorteoPage() {
     setLoading(true);
     const p = await getPlayers(activeGroup.id);
     setPlayers(p);
-    // Seleccionar todos por default
-    setSelected(new Set(p.map((pl) => pl.id)));
+    setSelected(new Set());
     setBestPlayers(new Set());
+    setTeamA([]);
+    setTeamB([]);
+    setSorted(false);
+    setSaved(false);
     setLoading(false);
   }, [activeGroup]);
 
@@ -111,14 +114,6 @@ export default function SorteoPage() {
       else next.delete(id);
       return next;
     });
-
-    if (checked) {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-    }
 
     setSorted(false);
     setSaved(false);
@@ -179,8 +174,9 @@ export default function SorteoPage() {
               Sorteo de equipos
             </h1>
             <p className="muted-copy mt-2 text-sm">
-              Marca los presentes, tilda rapido quienes son los mejores hoy y
-              guarda el partido para completar el resultado despues.
+              Primero marca quienes estan presentes, despues senala a los
+              mejores del dia y recien ahi hace el sorteo para guardar el
+              partido.
             </p>
           </header>
 
@@ -230,49 +226,63 @@ export default function SorteoPage() {
                   </div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {players.map((p) => (
-                    <div
-                      key={p.id}
-                      className={`rounded-lg border px-3 py-3 text-sm focus-within:ring-4 focus-within:ring-fijo-600/15 ${
-                        selected.has(p.id)
-                          ? "border-fijo-500 bg-fijo-50 text-fijo-900 shadow-[0_10px_24px_-22px_rgba(27,64,41,0.8)]"
-                          : "border-fijo-100 bg-white/70 text-[var(--muted)] opacity-60"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 font-bold">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(p.id)}
-                            onChange={() => togglePlayer(p.id)}
-                            className="h-4 w-4 accent-fijo-700"
-                          />
-                          <span className={selected.has(p.id) ? "" : "line-through"}>
-                            {p.name}
-                          </span>
-                        </label>
-                        <label
-                          className="group/best flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center"
-                          title="Marcar como bueno"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={bestPlayers.has(p.id)}
-                            onChange={(event) =>
-                              toggleBestPlayer(p.id, event.target.checked)
+                  {players.map((p) => {
+                    const isSelected = selected.has(p.id);
+                    const isBestDisabled = !isSelected;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`rounded-lg border px-3 py-3 text-sm focus-within:ring-4 focus-within:ring-fijo-600/15 ${
+                          isSelected
+                            ? "border-fijo-500 bg-fijo-50 text-fijo-900 shadow-[0_10px_24px_-22px_rgba(27,64,41,0.8)]"
+                            : "border-fijo-100 bg-white/70 text-[var(--muted)] opacity-60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 font-bold">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => togglePlayer(p.id)}
+                              className="h-4 w-4 accent-fijo-700"
+                            />
+                            <span className={isSelected ? "" : "line-through"}>{p.name}</span>
+                          </label>
+                          <label
+                            className={`group/best flex h-9 w-9 shrink-0 items-center justify-center ${
+                              isBestDisabled ? "cursor-not-allowed" : "cursor-pointer"
+                            }`}
+                            title={
+                              isBestDisabled
+                                ? "Primero marca al jugador como presente"
+                                : "Marcar como bueno"
                             }
-                            aria-label={`Marcar a ${p.name} como bueno`}
-                            className="peer sr-only"
-                          />
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-fijo-200 bg-white text-base shadow-[inset_0_2px_0_rgba(255,255,255,0.9),0_8px_18px_-16px_rgba(27,64,41,0.8)] transition group-hover/best:border-fijo-500 group-hover/best:bg-fijo-50 peer-focus-visible:ring-4 peer-focus-visible:ring-fijo-600/15 peer-checked:border-fijo-700 peer-checked:bg-white peer-checked:shadow-[inset_0_0_0_3px_rgba(216,237,218,0.9),0_10px_20px_-16px_rgba(27,64,41,0.9)]">
-                            <span aria-hidden="true">
-                              {bestPlayers.has(p.id) ? "⚽" : ""}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={bestPlayers.has(p.id)}
+                              disabled={isBestDisabled}
+                              onChange={(event) =>
+                                toggleBestPlayer(p.id, event.target.checked)
+                              }
+                              aria-label={`Marcar a ${p.name} como bueno`}
+                              className="peer sr-only"
+                            />
+                            <span
+                              className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-base shadow-[inset_0_2px_0_rgba(255,255,255,0.9),0_8px_18px_-16px_rgba(27,64,41,0.8)] transition ${
+                                isBestDisabled
+                                  ? "border-fijo-100 bg-fijo-50/40 text-fijo-300 shadow-none"
+                                  : "border-fijo-200 bg-white group-hover/best:border-fijo-500 group-hover/best:bg-fijo-50 peer-focus-visible:ring-4 peer-focus-visible:ring-fijo-600/15 peer-checked:border-fijo-700 peer-checked:bg-white peer-checked:shadow-[inset_0_0_0_3px_rgba(216,237,218,0.9),0_10px_20px_-16px_rgba(27,64,41,0.9)]"
+                              }`}
+                            >
+                              <span aria-hidden="true">{bestPlayers.has(p.id) ? "⚽" : ""}</span>
                             </span>
-                          </span>
-                        </label>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 
