@@ -19,6 +19,13 @@ The product flow is:
 7. Save the match day and later register the winner.
 8. Review attendance and result stats in the dashboard.
 
+Current `/sorteo` behavior:
+
+- All players start deselected by default for each match day.
+- The user marks attendees manually, one by one, before running the draw.
+- "Best player" quick marks only apply to players currently marked as present.
+- `match_days.attendees` stores only the players selected for that day.
+
 ## Stack
 
 - Next.js `16.2.4` with App Router and TypeScript.
@@ -42,6 +49,7 @@ Run `npm run build` before shipping structural changes when feasible. Use `npm r
 - `codex` is the working branch for agent changes and preview deployments.
 - When asked to publish changes, commit and push the requested branch only. Do not open pull requests automatically; the owner creates PRs manually.
 - Keep local agent/tooling files such as `.codex/` and `.mcp.json` out of commits unless the owner explicitly asks to version them.
+- Update `AGENTS.md` and `CLAUDE.md` whenever a relevant product flow, technical constraint, or delivery convention changes.
 
 ## Project Structure
 
@@ -77,7 +85,7 @@ src/
 - `MatchDay`: one saved match with attendees, `teamA`, `teamB`, and optional winner.
 - `PlayerStats`: dashboard-only derived stats, computed from players and match days.
 
-The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw.
+The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw. On `/sorteo`, presence is a temporary per-match selection: players start as absent, attendees are selected manually, and removing a player from the attendee list must also remove any temporary "bueno" mark for that match.
 
 ## Supabase
 
@@ -134,6 +142,7 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Most route components are client components because auth, routing, and Supabase browser state are client-side today.
 - Keep route protection consistent with `ProtectedRoute`.
 - Keep group-dependent pages wrapped with `GroupSetup` and render the main page content only when `activeGroup` exists.
+- In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, and best-player toggles must stay disabled for absent players.
 - Preserve the Spanish UI copy and the informal football vocabulary already used in the app.
 - Prefer the existing `@/` import alias and local domain types from `src/types`.
 - Do not bypass RLS assumptions by adding service-role logic to the frontend.

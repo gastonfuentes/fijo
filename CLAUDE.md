@@ -4,6 +4,8 @@
 
 App para organizar turnos fijos de futbol entre amigos. Este archivo resume el contexto practico del proyecto; las reglas compartidas para agentes estan en `AGENTS.md`.
 
+Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un flujo del producto o aparezca una nueva convencion de trabajo, actualizar este archivo y `AGENTS.md`.
+
 ## Stack
 
 - **Next.js 16.2.4** (App Router, TypeScript)
@@ -57,7 +59,9 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 ## Modelo de negocio
 
 - Niveles de jugadores: **bueno**, **tranqui**, **malo**. El alta de jugadores no muestra selector de nivel; los nuevos se guardan como `tranqui`.
-- En `/sorteo`, antes de sortear se marcan rapido los mejores del dia. Esos jugadores se tratan temporalmente como `bueno` para repartirlos entre equipos.
+- En `/sorteo`, todos los jugadores arrancan deseleccionados para cada partido. El usuario marca manualmente quienes estan presentes antes del sorteo.
+- En `/sorteo`, los mejores del dia solo se pueden marcar entre jugadores presentes. Esos jugadores se tratan temporalmente como `bueno` para repartirlos entre equipos.
+- Si un jugador deja de estar marcado como presente en `/sorteo`, tambien debe perder cualquier marca temporal de destacado de ese partido.
 - Cada partido registra: asistentes, equipos sorteados y resultado
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"
@@ -124,3 +128,5 @@ Si se quiere probar login en previews de Vercel, agregar tambien un patron de re
 - No poner claves privadas ni service-role keys en el frontend.
 - Las paginas protegidas deben usar `ProtectedRoute`.
 - Las paginas dependientes de grupo deben usar `GroupSetup` y esperar `activeGroup`.
+- En `/sorteo`, `selected` sigue siendo la fuente de verdad de los asistentes del dia y de `match_days.attendees`.
+- Cuando cambie un flujo importante o una decision tecnica relevante, actualizar `CLAUDE.md` y `AGENTS.md` en la misma tanda de trabajo.
