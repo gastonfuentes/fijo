@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://fijo-mu.vercel.app"),
   title: "fijo - Turnos de futbol",
   description: "Sorteos balanceados, asistencia y resultados para tu futbol fijo.",
 };
