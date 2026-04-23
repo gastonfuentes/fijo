@@ -291,7 +291,7 @@ export default function PartidosPage() {
       {modalMatch && (
         <MvpPollModal
           players={players}
-          eligiblePlayerIds={[...modalMatch.teamA, ...modalMatch.teamB]}
+          eligiblePlayerIds={modalMatch.winner === "A" ? modalMatch.teamA : modalMatch.teamB}
           onConfirm={(candidates) => handleCreatePoll(modalMatch.id, candidates)}
           onCancel={() => setModalMatchId(null)}
         />
