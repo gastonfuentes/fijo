@@ -8,8 +8,9 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Rama activa: `feat/mvp-poll-members` (abre permisos de encuesta MVP a cualquier miembro del grupo; build y lint OK, migracion aplicada en Supabase el 2026-04-23).
-- Feature anterior entregada: encuesta MVP por partido (`feat/mvp-poll`, mergeado a `main` como PR #10).
+- Rama activa: `feat/manual-match` (carga manual de partidos con fecha arbitraria; sin cambios de schema).
+- Feature anterior entregada: `feat/mvp-poll-members` (abre permisos de encuesta MVP a cualquier miembro del grupo; mergeado a `main` como PR #11).
+- Flujo carga manual: desde `/partidos` → boton "+ Cargar partido manual" → `/partidos/nuevo` → el usuario elige fecha (cualquier fecha pasada), asigna cada jugador al Equipo A, Equipo B o Ausente, y opcionalmente registra el ganador en el mismo formulario → llama a `createMatchDay` con los datos y redirige a `/partidos`. Sin cambios de schema ni nuevas funciones SQL.
 - Flujo MVP actual: al cerrar un partido, **cualquier miembro** del grupo elige 3-4 candidatos → se genera link publico `/votar/[pollId]` → se comparte por WhatsApp → cada votante usa el link sin login (1 voto por fingerprint de dispositivo) → un miembro cierra la encuesta → el MVP se persiste en `match_days.mvp_player_ids` y se incrementan `players.mvp_count` y `players.mvp_votes_received` (todo atomico via RPC `close_mvp_poll`).
 - Supabase MCP: configurado con `claude mcp add supabase -- npx -y @supabase/mcp-server-supabase@latest --access-token ...`
 
@@ -32,6 +33,7 @@ src/
     jugadores/            -> CRUD de jugadores.
     sorteo/               -> Seleccion de presentes, marca rapida de mejores, sorteo balanceado y compartir por WhatsApp.
     partidos/             -> Historial, resultados y eliminacion de partidos.
+    partidos/nuevo/       -> Carga manual de un partido con fecha arbitraria y asignacion A/B por jugador.
     votar/[pollId]/       -> Pagina publica de votacion MVP (sin login requerido).
   components/
     Navbar.tsx
@@ -82,6 +84,7 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - Cualquier miembro del grupo puede administrar el grupo, pero el `owner` original sigue fijo y no se transfiere ni se elimina desde la app.
 - En las funciones SQL de miembros (`get_group_members`, `add_group_member_by_email`, `remove_group_member`), las referencias a columnas de `group_members` deben ir calificadas con alias para evitar errores tipo `column reference "user_id" is ambiguous`.
 - Cada partido registra: asistentes, equipos sorteados y resultado
+- Un partido puede cargarse manualmente desde `/partidos/nuevo`: el usuario elige la fecha (cualquier fecha pasada), asigna cada jugador al Equipo A, Equipo B o como Ausente, y opcionalmente registra el ganador. No requiere pasar por el sorteo.
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"
 - La seccion `/grupos` permite renombrar grupos y eliminar turnos que ya no se usan.

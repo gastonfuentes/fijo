@@ -10,10 +10,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Current Checkpoint
 
-- Active feature branch: `feat/mvp-poll-members` — opens MVP poll management (create/close/delete) to any group member, not only the owner.
-- Status: code committed on this branch (build and lint pass); SQL migration `mvp_polls_members_access` applied to Supabase project `hduumplgmjzudmwztffp` on 2026-04-23.
-- Previous shipped feature: MVP poll (`feat/mvp-poll`, merged to `main` as PR #10).
-- Schema state: `supabase-schema.sql` is idempotent. `mvp_polls` RLS policies now check `group_members` membership (names: `"members can create/update/delete mvp polls"`; old `"owner can ..."` policies are dropped). The `close_mvp_poll` RPC validates membership via `group_members` and returns the error `'Solo los miembros del grupo pueden cerrar la encuesta'` when the caller is not a member.
+- Active feature branch: `feat/manual-match` — adds `/partidos/nuevo` page for manually loading a match (arbitrary date, per-player A/B assignment, optional winner). No schema changes.
+- Previous shipped feature: `feat/mvp-poll-members` — opens MVP poll management to any group member (merged to `main` as PR #11).
+- Schema state: `supabase-schema.sql` is idempotent. `mvp_polls` RLS policies check `group_members` membership (names: `"members can create/update/delete mvp polls"`; old `"owner can ..."` policies are dropped). The `close_mvp_poll` RPC validates membership via `group_members` and returns the error `'Solo los miembros del grupo pueden cerrar la encuesta'` when the caller is not a member.
 
 The product flow is:
 
@@ -26,8 +25,9 @@ The product flow is:
 7. Generate two balanced teams.
 8. Share the sorted teams through WhatsApp or copy the message to send it manually.
 9. Save the match day and later register the winner.
-10. Optionally create an MVP poll: pick 3–4 candidate players, share the public voting link via WhatsApp, let anyone vote (one vote per device), then close the poll to persist the winner.
-11. Review attendance, result, and MVP stats in the dashboard.
+10. Alternatively, load a past match manually from `/partidos/nuevo`: pick a date, assign each player to Team A, Team B, or Absent, and optionally set the winner in one step.
+11. Optionally create an MVP poll: pick 3–4 candidate players, share the public voting link via WhatsApp, let anyone vote (one vote per device), then close the poll to persist the winner.
+12. Review attendance, result, and MVP stats in the dashboard.
 
 Current `/sorteo` behavior:
 
@@ -85,6 +85,7 @@ src/
     jugadores/            Player CRUD.
     sorteo/               Attendee selection, quick best-player checks, and balanced team draw.
     partidos/             Saved match days, winners, deletion, and MVP poll management.
+    partidos/nuevo/       Manual match entry: arbitrary date, per-player A/B assignment, optional winner.
     votar/[pollId]/       Public MVP voting page (no login required).
   components/
     Navbar.tsx
@@ -105,7 +106,7 @@ src/
 - `SkillLevel`: `bueno`, `tranqui`, `malo`.
 - `Player`: a player belongs to a group and has a stored skill level for compatibility.
 - `Group`: a recurring football group owned by a Supabase auth user.
-- `MatchDay`: one saved match with attendees, `teamA`, `teamB`, optional winner, and optional `mvp_player_ids`.
+- `MatchDay`: one saved match with attendees, `teamA`, `teamB`, optional winner, and optional `mvp_player_ids`. Can be created through the `/sorteo` balanced draw or manually via `/partidos/nuevo` with an arbitrary past date and per-player A/B assignment.
 - `MvpPoll`: one poll per match day with `candidates` (jsonb), `status` (`open`/`closed`), and a unique voting link at `/votar/[pollId]`.
 - `PlayerStats`: dashboard-only derived stats, computed from players and match days.
 
