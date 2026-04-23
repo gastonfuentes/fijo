@@ -545,3 +545,150 @@ create policy "members can delete match days"
   );
 
 notify pgrst, 'reload schema';
+
+-- ============================================================
+-- MVP POLLS: encuesta al mejor jugador del partido
+-- ============================================================
+
+-- Contadores acumulados por jugador
+alter table players add column if not exists mvp_count int not null default 0;
+alter table players add column if not exists mvp_votes_received int not null default 0;
+
+-- MVPs del partido (array para soportar empate)
+alter table match_days add column if not exists mvp_player_ids uuid[] not null default '{}';
+
+-- Encuesta MVP: una por partido
+create table if not exists mvp_polls (
+  id uuid default gen_random_uuid() primary key,
+  match_day_id uuid references match_days(id) on delete cascade unique,
+  group_id uuid references groups(id) on delete cascade,
+  group_name text not null,
+  match_date date not null,
+  candidates jsonb not null,
+  status text not null default 'open' check (status in ('open', 'closed')),
+  created_at timestamptz default now(),
+  closed_at timestamptz
+);
+
+-- Votos: un voto por (poll, fingerprint de dispositivo)
+create table if not exists mvp_votes (
+  id uuid default gen_random_uuid() primary key,
+  poll_id uuid references mvp_polls(id) on delete cascade,
+  player_id uuid not null,
+  voter_fingerprint text not null,
+  created_at timestamptz default now(),
+  unique (poll_id, voter_fingerprint)
+);
+
+alter table mvp_polls enable row level security;
+alter table mvp_votes enable row level security;
+
+-- mvp_polls policies
+drop policy if exists "anyone can view mvp polls" on mvp_polls;
+create policy "anyone can view mvp polls"
+  on mvp_polls for select using (true);
+
+drop policy if exists "owner can create mvp polls" on mvp_polls;
+create policy "owner can create mvp polls"
+  on mvp_polls for insert with check (
+    exists (select 1 from groups where id = group_id and owner_id = auth.uid())
+  );
+
+drop policy if exists "owner can update mvp polls" on mvp_polls;
+create policy "owner can update mvp polls"
+  on mvp_polls for update using (
+    exists (select 1 from groups where id = group_id and owner_id = auth.uid())
+  );
+
+drop policy if exists "owner can delete mvp polls" on mvp_polls;
+create policy "owner can delete mvp polls"
+  on mvp_polls for delete using (
+    exists (select 1 from groups where id = group_id and owner_id = auth.uid())
+  );
+
+-- mvp_votes policies
+drop policy if exists "anyone can view votes" on mvp_votes;
+create policy "anyone can view votes"
+  on mvp_votes for select using (true);
+
+drop policy if exists "anyone can vote on open polls" on mvp_votes;
+create policy "anyone can vote on open polls"
+  on mvp_votes for insert with check (
+    exists (select 1 from mvp_polls where id = poll_id and status = 'open')
+  );
+
+-- RPC: cerrar encuesta + persistir MVP + incrementar contadores (atomico)
+create or replace function public.close_mvp_poll(poll_id uuid)
+returns uuid[]
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_group_id uuid;
+  v_match_day_id uuid;
+  v_max int;
+  v_winners uuid[];
+begin
+  select group_id, match_day_id
+  into v_group_id, v_match_day_id
+  from mvp_polls
+  where id = close_mvp_poll.poll_id and status = 'open';
+
+  if v_group_id is null then
+    raise exception 'Encuesta no encontrada o ya cerrada';
+  end if;
+
+  if not exists (
+    select 1 from groups where id = v_group_id and owner_id = auth.uid()
+  ) then
+    raise exception 'Solo el owner del grupo puede cerrar la encuesta';
+  end if;
+
+  -- Sumar votos recibidos a cada jugador candidato
+  update players p
+     set mvp_votes_received = mvp_votes_received + v.c
+    from (
+      select player_id, count(*)::int as c
+      from mvp_votes
+      where poll_id = close_mvp_poll.poll_id
+      group by player_id
+    ) v
+   where p.id = v.player_id;
+
+  -- Determinar maximo de votos
+  select coalesce(max(c), 0) into v_max
+    from (
+      select count(*)::int as c
+      from mvp_votes
+      where poll_id = close_mvp_poll.poll_id
+      group by player_id
+    ) s;
+
+  if v_max > 0 then
+    -- Ganadores: todos los que tienen el maximo (puede haber empate)
+    select array_agg(player_id) into v_winners
+      from (
+        select player_id, count(*)::int as c
+        from mvp_votes
+        where poll_id = close_mvp_poll.poll_id
+        group by player_id
+      ) s
+     where s.c = v_max;
+
+    update players set mvp_count = mvp_count + 1 where id = any(v_winners);
+    update match_days set mvp_player_ids = v_winners where id = v_match_day_id;
+  end if;
+
+  update mvp_polls
+     set status = 'closed', closed_at = now()
+   where id = close_mvp_poll.poll_id;
+
+  return coalesce(v_winners, array[]::uuid[]);
+end;
+$$;
+
+revoke all on function public.close_mvp_poll(uuid) from public;
+grant execute on function public.close_mvp_poll(uuid) to authenticated;
+
+notify pgrst, 'reload schema';

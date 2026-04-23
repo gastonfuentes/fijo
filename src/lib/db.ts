@@ -1,5 +1,5 @@
 import { createClient } from "./supabase";
-import { Player, MatchDay, Group, GroupMember, SkillLevel } from "@/types";
+import { Player, MatchDay, Group, GroupMember, SkillLevel, MvpPoll, MvpPollResults, MvpPollCandidate } from "@/types";
 
 type UserGroupRow = {
   groups: UserGroupRelation | UserGroupRelation[] | null;
@@ -196,6 +196,8 @@ export async function getPlayers(groupId: string): Promise<Player[]> {
     name: row.name,
     level: row.level as SkillLevel,
     createdAt: new Date(row.created_at).getTime(),
+    mvpCount: row.mvp_count ?? 0,
+    mvpVotesReceived: row.mvp_votes_received ?? 0,
   }));
 }
 
@@ -265,6 +267,7 @@ export async function getMatchDays(groupId: string): Promise<MatchDay[]> {
     teamA: row.team_a ?? [],
     teamB: row.team_b ?? [],
     winner: row.winner as "A" | "B" | null,
+    mvpPlayerIds: row.mvp_player_ids ?? [],
     createdAt: new Date(row.created_at).getTime(),
   }));
 }
@@ -297,4 +300,111 @@ export async function deleteMatchDay(groupId: string, matchDayId: string) {
     .eq("id", matchDayId)
     .eq("group_id", groupId);
   if (error) throw error;
+}
+
+// ---- MVP Polls ----
+
+function rowToMvpPoll(row: Record<string, unknown>): MvpPoll {
+  return {
+    id: row.id as string,
+    matchDayId: row.match_day_id as string,
+    groupId: row.group_id as string,
+    groupName: row.group_name as string,
+    matchDate: row.match_date as string,
+    candidates: row.candidates as MvpPollCandidate[],
+    status: row.status as "open" | "closed",
+    createdAt: new Date(row.created_at as string).getTime(),
+    closedAt: row.closed_at ? new Date(row.closed_at as string).getTime() : null,
+  };
+}
+
+export async function createMvpPoll(
+  groupId: string,
+  matchDayId: string,
+  groupName: string,
+  matchDate: string,
+  candidates: MvpPollCandidate[]
+): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("mvp_polls")
+    .insert({ group_id: groupId, match_day_id: matchDayId, group_name: groupName, match_date: matchDate, candidates })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function getMvpPollsByGroup(groupId: string): Promise<MvpPoll[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("mvp_polls")
+    .select("*")
+    .eq("group_id", groupId);
+  if (error) throw error;
+  return (data ?? []).map((row) => rowToMvpPoll(row as Record<string, unknown>));
+}
+
+export async function getMvpPollById(pollId: string): Promise<MvpPoll | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("mvp_polls")
+    .select("*")
+    .eq("id", pollId)
+    .single();
+  if (error) return null;
+  return rowToMvpPoll(data as Record<string, unknown>);
+}
+
+export async function getMvpPollResults(pollId: string): Promise<MvpPollResults | null> {
+  const supabase = createClient();
+  const [pollRes, votesRes] = await Promise.all([
+    supabase.from("mvp_polls").select("*").eq("id", pollId).single(),
+    supabase.from("mvp_votes").select("player_id").eq("poll_id", pollId),
+  ]);
+  if (pollRes.error || !pollRes.data) return null;
+
+  const poll = rowToMvpPoll(pollRes.data as Record<string, unknown>);
+  const votes = votesRes.data ?? [];
+
+  const totals: Record<string, number> = {};
+  for (const v of votes) {
+    totals[v.player_id] = (totals[v.player_id] ?? 0) + 1;
+  }
+
+  const totalVotes = votes.length;
+  const maxVotes = totalVotes > 0 ? Math.max(...Object.values(totals)) : 0;
+  const winners = maxVotes > 0 ? Object.keys(totals).filter((id) => totals[id] === maxVotes) : [];
+
+  return { poll, totals, totalVotes, winners };
+}
+
+export async function closeMvpPoll(pollId: string): Promise<string[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("close_mvp_poll", { poll_id: pollId });
+  if (error) throw error;
+  return (data as string[]) ?? [];
+}
+
+export async function deleteMvpPoll(pollId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("mvp_polls").delete().eq("id", pollId);
+  if (error) throw error;
+}
+
+export async function castMvpVote(
+  pollId: string,
+  playerId: string,
+  voterFingerprint: string
+): Promise<{ alreadyVoted: boolean }> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("mvp_votes")
+    .insert({ poll_id: pollId, player_id: playerId, voter_fingerprint: voterFingerprint });
+
+  if (error) {
+    if (error.code === "23505") return { alreadyVoted: true };
+    throw error;
+  }
+  return { alreadyVoted: false };
 }

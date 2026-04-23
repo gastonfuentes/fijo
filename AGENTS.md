@@ -10,11 +10,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Current Checkpoint
 
-- Active feature branch: `feat/group-shared-access`
-- Current feature in progress: shared group access with up to 3 app users per group, added by email.
-- Local app status: client/UI, auth sync, and SQL schema changes are implemented in the repo and deployed in the Supabase project `hduumplgmjzudmwztffp`.
-- Latest schema hardening in repo: `supabase-schema.sql` is safe to re-run, backfills `user_profiles` from `auth.users`, keeps them synced by trigger, enforces the 3-member limit in the DB, tightens RLS update checks, and qualifies member-function column references to avoid ambiguous `user_id` errors.
-- Latest verification: on 2026-04-23 the schema was applied remotely with Supabase CLI and `/grupos` was verified again after fixing the ambiguous `user_id` bug in the shared-member SQL functions.
+- Last shipped feature: **MVP poll** (`feat/mvp-poll`, ready to merge into `main`).
+- Status: code committed in `feat/mvp-poll` (build and lint pass); SQL migration applied to Supabase project `hduumplgmjzudmwztffp` on 2026-04-23.
+- Previous feature: shared group access (up to 3 app users per group, added by email) — deployed and verified on 2026-04-23.
+- Schema state: `supabase-schema.sql` is idempotent and safe to re-run. Includes the full MVP poll migration (tables `mvp_polls`, `mvp_votes`; new columns on `players` and `match_days`; RPC `close_mvp_poll`).
 
 The product flow is:
 
@@ -27,7 +26,8 @@ The product flow is:
 7. Generate two balanced teams.
 8. Share the sorted teams through WhatsApp or copy the message to send it manually.
 9. Save the match day and later register the winner.
-10. Review attendance and result stats in the dashboard.
+10. Optionally create an MVP poll: pick 3–4 candidate players, share the public voting link via WhatsApp, let anyone vote (one vote per device), then close the poll to persist the winner.
+11. Review attendance, result, and MVP stats in the dashboard.
 
 Current `/sorteo` behavior:
 
@@ -84,7 +84,8 @@ src/
     grupos/               List, rename, delete, and manage shared members.
     jugadores/            Player CRUD.
     sorteo/               Attendee selection, quick best-player checks, and balanced team draw.
-    partidos/             Saved match days, winners, and deletion.
+    partidos/             Saved match days, winners, deletion, and MVP poll management.
+    votar/[pollId]/       Public MVP voting page (no login required).
   components/
     Navbar.tsx
     ProtectedRoute.tsx
@@ -104,7 +105,8 @@ src/
 - `SkillLevel`: `bueno`, `tranqui`, `malo`.
 - `Player`: a player belongs to a group and has a stored skill level for compatibility.
 - `Group`: a recurring football group owned by a Supabase auth user.
-- `MatchDay`: one saved match with attendees, `teamA`, `teamB`, and optional winner.
+- `MatchDay`: one saved match with attendees, `teamA`, `teamB`, optional winner, and optional `mvp_player_ids`.
+- `MvpPoll`: one poll per match day with `candidates` (jsonb), `status` (`open`/`closed`), and a unique voting link at `/votar/[pollId]`.
 - `PlayerStats`: dashboard-only derived stats, computed from players and match days.
 
 The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw. On `/sorteo`, presence is a temporary per-match selection: players start as absent, attendees are selected manually, newly created players can be added inline and auto-selected as present, and removing a player from the attendee list must also remove any temporary "bueno" mark for that match.
@@ -118,8 +120,10 @@ Tables:
 - `groups`
 - `group_members`
 - `user_profiles`
-- `players`
-- `match_days`
+- `players` (includes `mvp_count`, `mvp_votes_received`)
+- `match_days` (includes `mvp_player_ids uuid[]`)
+- `mvp_polls` (one per match day; RLS: select public, insert/update/delete owner only)
+- `mvp_votes` (one per `poll_id + voter_fingerprint`; insert allowed on open polls without login)
 
 All tables use RLS. Data access should go through `src/lib/db.ts` unless there is a strong reason to add a new helper.
 
@@ -172,3 +176,6 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Prefer the existing `@/` import alias and local domain types from `src/types`.
 - Do not bypass RLS assumptions by adding service-role logic to the frontend.
 - Before changing Next.js conventions, routing, metadata, layouts, server/client boundaries, or build config, read the matching guide under `node_modules/next/dist/docs/`.
+- The MVP poll voting page (`/votar/[pollId]`) is intentionally public: it must not require login and must not use auth-gated Supabase calls. Votes are inserted with the anon key; RLS on `mvp_votes` allows insert only when the referenced poll is `open`.
+- Closing an MVP poll must go through the RPC `close_mvp_poll(poll_id)` — never replicate that logic client-side. The RPC is `security definer` and checks that the caller is the group owner.
+- In case of a tie, all top-vote players become MVP (`mvp_player_ids` is an array for this reason). Increment `mvp_count` for each winner.

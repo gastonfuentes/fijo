@@ -186,6 +186,8 @@ export default function SorteoPage() {
         name: trimmedName,
         level: "tranqui",
         createdAt: Date.now(),
+        mvpCount: 0,
+        mvpVotesReceived: 0,
       };
 
       setPlayers((prev) =>
@@ -235,6 +237,7 @@ export default function SorteoPage() {
       teamA: teamA.map((p) => p.id),
       teamB: teamB.map((p) => p.id),
       winner: null,
+      mvpPlayerIds: [],
       createdAt: Date.now(),
     });
     setSaving(false);
