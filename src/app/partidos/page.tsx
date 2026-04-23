@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import GroupSetup from "@/components/GroupSetup";
 import MvpPollModal from "@/components/MvpPollModal";
@@ -101,15 +102,23 @@ export default function PartidosPage() {
       <GroupSetup />
       {activeGroup && (
         <div className="page-shell">
-          <header className="mb-8 max-w-3xl">
-            <p className="eyebrow mb-2">historial</p>
-            <h1 className="text-4xl font-black leading-tight text-fijo-900">
-              Partidos
-            </h1>
-            <p className="muted-copy mt-2 text-sm">
-              Guarda el ganador de cada fecha y eliminá los partidos cargados por
-              error.
-            </p>
+          <header className="mb-8 flex max-w-3xl flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="eyebrow mb-2">historial</p>
+              <h1 className="text-4xl font-black leading-tight text-fijo-900">
+                Partidos
+              </h1>
+              <p className="muted-copy mt-2 text-sm">
+                Guarda el ganador de cada fecha y eliminá los partidos cargados por
+                error.
+              </p>
+            </div>
+            <Link
+              href="/partidos/nuevo"
+              className="btn-secondary shrink-0 text-center"
+            >
+              + Cargar partido manual
+            </Link>
           </header>
 
           {loading ? (
@@ -127,6 +136,12 @@ export default function PartidosPage() {
                 Cuando guardes un partido, lo vas a ver aca para registrar el
                 ganador.
               </p>
+              <Link
+                href="/partidos/nuevo"
+                className="btn-secondary mt-6 inline-block"
+              >
+                + Cargar partido manual
+              </Link>
             </div>
           ) : (
             <div className="space-y-4">
