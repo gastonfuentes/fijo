@@ -8,6 +8,25 @@ import { addPlayer, getPlayers, createMatchDay } from "@/lib/db";
 import { sorteoBalanceado } from "@/lib/sorteo";
 import { Player } from "@/types";
 
+function buildSorteoShareText(teamA: Player[], teamB: Player[]) {
+  const formatTeam = (label: string, team: Player[]) =>
+    [`${label}:`, ...team.map((player) => `- ${player.name}`)].join("\n");
+
+  return [
+    "Sorteo de hoy",
+    "",
+    formatTeam("Equipo A", teamA),
+    "",
+    "vs",
+    "",
+    formatTeam("Equipo B", teamB),
+  ].join("\n");
+}
+
+function buildWhatsAppShareUrl(message: string) {
+  return `https://wa.me/?text=${encodeURIComponent(message)}`;
+}
+
 function TeamCard({
   team,
   label,
@@ -71,6 +90,7 @@ export default function SorteoPage() {
   const [newPlayerName, setNewPlayerName] = useState("");
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [addPlayerError, setAddPlayerError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"copied" | "error" | null>(null);
 
   const load = useCallback(async () => {
     if (!activeGroup) return;
@@ -91,6 +111,16 @@ export default function SorteoPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!copyStatus) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setCopyStatus(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [copyStatus]);
+
   const togglePlayer = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -108,6 +138,7 @@ export default function SorteoPage() {
     });
     setSorted(false);
     setSaved(false);
+    setCopyStatus(null);
   };
 
   const toggleBestPlayer = (id: string, checked: boolean) => {
@@ -120,12 +151,14 @@ export default function SorteoPage() {
 
     setSorted(false);
     setSaved(false);
+    setCopyStatus(null);
   };
 
   const selectAll = () => {
     setSelected(new Set(players.map((p) => p.id)));
     setSorted(false);
     setSaved(false);
+    setCopyStatus(null);
   };
 
   const selectNone = () => {
@@ -133,6 +166,7 @@ export default function SorteoPage() {
     setBestPlayers(new Set());
     setSorted(false);
     setSaved(false);
+    setCopyStatus(null);
   };
 
   const handleAddPlayer = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -166,6 +200,7 @@ export default function SorteoPage() {
       setTeamB([]);
       setSorted(false);
       setSaved(false);
+      setCopyStatus(null);
       setNewPlayerName("");
     } catch {
       setAddPlayerError("No se pudo agregar el jugador. Intenta de nuevo.");
@@ -188,6 +223,7 @@ export default function SorteoPage() {
     setTeamB(b);
     setSorted(true);
     setSaved(false);
+    setCopyStatus(null);
   };
 
   const handleSave = async () => {
@@ -203,6 +239,20 @@ export default function SorteoPage() {
     });
     setSaving(false);
     setSaved(true);
+  };
+
+  const shareMessage = sorted ? buildSorteoShareText(teamA, teamB) : "";
+  const whatsappShareUrl = shareMessage ? buildWhatsAppShareUrl(shareMessage) : "#";
+
+  const handleCopyShareMessage = async () => {
+    if (!shareMessage) return;
+
+    try {
+      await navigator.clipboard.writeText(shareMessage);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
   };
 
   return (
@@ -391,20 +441,61 @@ export default function SorteoPage() {
                   </div>
 
                   {sorted && (
-                    <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
-                      <TeamCard
-                        team={teamA}
-                        label="A"
-                        color="border-l-sky-500 bg-sky-50/70"
-                      />
-                      <div className="flex items-center justify-center rounded-lg border border-fijo-100 bg-white/70 px-4 py-3 text-2xl font-black text-[var(--muted)]">
-                        VS
+                    <div className="space-y-4">
+                      <section className="surface-solid flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--muted)]">
+                            compartir
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-fijo-900">
+                            Manda el resultado del sorteo al grupo.
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <a
+                            href={whatsappShareUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-primary text-center"
+                          >
+                            Compartir por WhatsApp
+                          </a>
+                          <button
+                            onClick={handleCopyShareMessage}
+                            className="btn-secondary"
+                          >
+                            Copiar mensaje
+                          </button>
+                        </div>
+                      </section>
+
+                      {copyStatus && (
+                        <p
+                          className={`text-sm font-semibold ${
+                            copyStatus === "copied" ? "text-fijo-700" : "text-red-600"
+                          }`}
+                        >
+                          {copyStatus === "copied"
+                            ? "Mensaje copiado."
+                            : "No se pudo copiar el mensaje."}
+                        </p>
+                      )}
+
+                      <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+                        <TeamCard
+                          team={teamA}
+                          label="A"
+                          color="border-l-sky-500 bg-sky-50/70"
+                        />
+                        <div className="flex items-center justify-center rounded-lg border border-fijo-100 bg-white/70 px-4 py-3 text-2xl font-black text-[var(--muted)]">
+                          VS
+                        </div>
+                        <TeamCard
+                          team={teamB}
+                          label="B"
+                          color="border-l-red-500 bg-red-50/70"
+                        />
                       </div>
-                      <TeamCard
-                        team={teamB}
-                        label="B"
-                        color="border-l-red-500 bg-red-50/70"
-                      />
                     </div>
                   )}
                 </>
