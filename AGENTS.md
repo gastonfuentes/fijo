@@ -8,17 +8,26 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 `fijo` is a Next.js app for organizing recurring amateur football matches with a fixed group of friends.
 
+## Current Checkpoint
+
+- Active feature branch: `feat/group-shared-access`
+- Current feature in progress: shared group access with up to 3 app users per group, added by email.
+- Local app status: client/UI, auth sync, and SQL schema changes are implemented in the repo and deployed in the Supabase project `hduumplgmjzudmwztffp`.
+- Latest schema hardening in repo: `supabase-schema.sql` is safe to re-run, backfills `user_profiles` from `auth.users`, keeps them synced by trigger, enforces the 3-member limit in the DB, tightens RLS update checks, and qualifies member-function column references to avoid ambiguous `user_id` errors.
+- Latest verification: on 2026-04-23 the schema was applied remotely with Supabase CLI and `/grupos` was verified again after fixing the ambiguous `user_id` bug in the shared-member SQL functions.
+
 The product flow is:
 
 1. Sign in with Google through Supabase Auth.
-2. Create or select a football group.
-3. Manage group names or delete groups that are no longer used.
-4. Add players to the group.
-5. Select today's attendees and quickly mark the best players for that match.
-6. Generate two balanced teams.
-7. Share the sorted teams through WhatsApp or copy the message to send it manually.
-8. Save the match day and later register the winner.
-9. Review attendance and result stats in the dashboard.
+2. Create a football group or join one where the user was added by email.
+3. Select the active group and distinguish owned groups from shared groups.
+4. Manage group names, members, or delete groups that are no longer used.
+5. Add players to the group.
+6. Select today's attendees and quickly mark the best players for that match.
+7. Generate two balanced teams.
+8. Share the sorted teams through WhatsApp or copy the message to send it manually.
+9. Save the match day and later register the winner.
+10. Review attendance and result stats in the dashboard.
 
 Current `/sorteo` behavior:
 
@@ -29,6 +38,14 @@ Current `/sorteo` behavior:
 - "Best player" quick marks only apply to players currently marked as present.
 - `match_days.attendees` stores only the players selected for that day.
 - Once teams are sorted, the user can share the result through WhatsApp or copy the same message manually.
+
+Current `/grupos` behavior:
+
+- A group can have up to 3 app users in total.
+- Members are added by email only if that user already signed into the app at least once.
+- Owned groups and invited groups are shown together in the UI with clear role badges.
+- Any group member can rename the group, delete it, and manage non-owner members.
+- The original `owner_id` remains fixed as the technical owner and cannot be transferred or removed in the app.
 
 ## Stack
 
@@ -64,7 +81,7 @@ src/
     page.tsx              Login and authenticated redirect.
     auth/callback/        Google OAuth callback page.
     dashboard/            Group stats and ranking.
-    grupos/               List, rename, and delete groups.
+    grupos/               List, rename, delete, and manage shared members.
     jugadores/            Player CRUD.
     sorteo/               Attendee selection, quick best-player checks, and balanced team draw.
     partidos/             Saved match days, winners, and deletion.
@@ -100,6 +117,7 @@ Tables:
 
 - `groups`
 - `group_members`
+- `user_profiles`
 - `players`
 - `match_days`
 
@@ -147,6 +165,7 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Most route components are client components because auth, routing, and Supabase browser state are client-side today.
 - Keep route protection consistent with `ProtectedRoute`.
 - Keep group-dependent pages wrapped with `GroupSetup` and render the main page content only when `activeGroup` exists.
+- Group membership by email depends on `user_profiles` plus SQL functions in `supabase-schema.sql`; the schema also backfills/syncs `user_profiles` from `auth.users`, and the frontend keeps the client-side sync as a compatible fallback. The member-management functions must keep all `group_members` column references qualified (`gm.user_id`, etc.) to avoid PL/pgSQL ambiguity with output-column names. Keep this flow browser-safe and do not add service-role keys to the frontend.
 - In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, best-player toggles must stay disabled for absent players, and quick-created players should be added as `tranqui` and marked present immediately.
 - In `/sorteo`, any share action must use the currently sorted teams only and must not introduce extra persistence in Supabase.
 - Preserve the Spanish UI copy and the informal football vocabulary already used in the app.
