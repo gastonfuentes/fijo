@@ -6,6 +6,8 @@ export interface Player {
   level: SkillLevel;
   photoURL?: string;
   createdAt: number;
+  mvpCount: number;
+  mvpVotesReceived: number;
 }
 
 export interface MatchDay {
@@ -14,8 +16,33 @@ export interface MatchDay {
   attendees: string[]; // player IDs
   teamA: string[];
   teamB: string[];
-  winner: "A" | "B" | null; // null = no se jugó o no se registró
+  winner: "A" | "B" | null;
+  mvpPlayerIds: string[];
   createdAt: number;
+}
+
+export interface MvpPollCandidate {
+  id: string;
+  name: string;
+}
+
+export interface MvpPoll {
+  id: string;
+  matchDayId: string;
+  groupId: string;
+  groupName: string;
+  matchDate: string; // ISO date
+  candidates: MvpPollCandidate[];
+  status: "open" | "closed";
+  createdAt: number;
+  closedAt: number | null;
+}
+
+export interface MvpPollResults {
+  poll: MvpPoll;
+  totals: Record<string, number>; // playerId -> vote count
+  totalVotes: number;
+  winners: string[]; // playerIds
 }
 
 export interface Group {
