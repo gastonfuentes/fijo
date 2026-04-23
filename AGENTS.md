@@ -16,8 +16,9 @@ The product flow is:
 4. Add players to the group.
 5. Select today's attendees and quickly mark the best players for that match.
 6. Generate two balanced teams.
-7. Save the match day and later register the winner.
-8. Review attendance and result stats in the dashboard.
+7. Share the sorted teams through WhatsApp or copy the message to send it manually.
+8. Save the match day and later register the winner.
+9. Review attendance and result stats in the dashboard.
 
 Current `/sorteo` behavior:
 
@@ -27,6 +28,7 @@ Current `/sorteo` behavior:
 - Players created from `/sorteo` are stored as `tranqui` and auto-selected as present for that match.
 - "Best player" quick marks only apply to players currently marked as present.
 - `match_days.attendees` stores only the players selected for that day.
+- Once teams are sorted, the user can share the result through WhatsApp or copy the same message manually.
 
 ## Stack
 
@@ -49,6 +51,7 @@ Run `npm run build` before shipping structural changes when feasible. Use `npm r
 
 - `main` is the production branch.
 - `codex` is the working branch for agent changes and preview deployments.
+- Every new feature starts from a dedicated branch created from the latest local `main`.
 - When asked to publish changes, commit and push the requested branch only. Do not open pull requests automatically; the owner creates PRs manually.
 - Keep local agent/tooling files such as `.codex/` and `.mcp.json` out of commits unless the owner explicitly asks to version them.
 - Update `AGENTS.md` and `CLAUDE.md` whenever a relevant product flow, technical constraint, or delivery convention changes.
@@ -145,6 +148,7 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Keep route protection consistent with `ProtectedRoute`.
 - Keep group-dependent pages wrapped with `GroupSetup` and render the main page content only when `activeGroup` exists.
 - In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, best-player toggles must stay disabled for absent players, and quick-created players should be added as `tranqui` and marked present immediately.
+- In `/sorteo`, any share action must use the currently sorted teams only and must not introduce extra persistence in Supabase.
 - Preserve the Spanish UI copy and the informal football vocabulary already used in the app.
 - Prefer the existing `@/` import alias and local domain types from `src/types`.
 - Do not bypass RLS assumptions by adding service-role logic to the frontend.

@@ -23,7 +23,7 @@ src/
     dashboard/            -> Estadisticas de jugadores.
     grupos/               -> Lista, edicion de nombre y eliminacion de grupos.
     jugadores/            -> CRUD de jugadores.
-    sorteo/               -> Seleccion de presentes, marca rapida de mejores y sorteo balanceado.
+    sorteo/               -> Seleccion de presentes, marca rapida de mejores, sorteo balanceado y compartir por WhatsApp.
     partidos/             -> Historial, resultados y eliminacion de partidos.
   components/
     Navbar.tsx
@@ -64,6 +64,7 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - Un jugador creado rapido desde `/sorteo` se guarda como `tranqui` y queda marcado como presente automaticamente.
 - En `/sorteo`, los mejores del dia solo se pueden marcar entre jugadores presentes. Esos jugadores se tratan temporalmente como `bueno` para repartirlos entre equipos.
 - Si un jugador deja de estar marcado como presente en `/sorteo`, tambien debe perder cualquier marca temporal de destacado de ese partido.
+- Una vez sorteados los equipos en `/sorteo`, se puede compartir el resultado por WhatsApp o copiar el mismo mensaje para mandarlo manualmente.
 - Cada partido registra: asistentes, equipos sorteados y resultado
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"
@@ -90,6 +91,7 @@ npm run lint   # lint
 
 - `main` es la rama de produccion.
 - `codex` es la rama de trabajo para cambios hechos por agentes y previews.
+- Cada nueva feature debe arrancar en una rama nueva creada desde la `main` local actualizada.
 - Si el usuario pide subir cambios a GitHub, hacer commit/push solamente. No abrir PR automaticamente; el usuario crea los PRs.
 - No commitear `.codex/` ni `.mcp.json` salvo pedido explicito.
 
@@ -132,4 +134,5 @@ Si se quiere probar login en previews de Vercel, agregar tambien un patron de re
 - Las paginas dependientes de grupo deben usar `GroupSetup` y esperar `activeGroup`.
 - En `/sorteo`, `selected` sigue siendo la fuente de verdad de los asistentes del dia y de `match_days.attendees`.
 - En `/sorteo`, el alta rapida de jugadores debe conservar la seleccion actual del partido y sumar al nuevo jugador como presente.
+- En `/sorteo`, compartir por WhatsApp o copiar el mensaje debe usar exactamente los equipos sorteados en pantalla y no guardar datos extra.
 - Cuando cambie un flujo importante o una decision tecnica relevante, actualizar `CLAUDE.md` y `AGENTS.md` en la misma tanda de trabajo.
