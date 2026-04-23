@@ -8,11 +8,10 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Rama activa de la feature en curso: `feat/group-shared-access`
-- Feature actual: grupos compartidos con hasta 3 usuarios de la app y alta de miembros por correo.
-- Estado actual: el codigo de frontend, auth y schema SQL ya esta implementado en el repo y el schema remoto ya fue aplicado en `hduumplgmjzudmwztffp`.
-- Ultimo ajuste del schema: `supabase-schema.sql` es re-ejecutable, hace backfill de `user_profiles` desde `auth.users`, mantiene ese perfil sincronizado con trigger, garantiza el limite de 3 miembros por grupo en la DB, endurece RLS en updates y corrige la ambiguedad de `user_id` en las funciones SQL de miembros.
-- Ultima verificacion: el 2026-04-23 se aplico el schema por Supabase CLI y `/grupos` volvio a responder bien despues del fix de `user_id`.
+- Ultima feature entregada: **encuesta MVP por partido** (`feat/mvp-poll`, lista para PR a `main`).
+- Estado: codigo commiteado en `feat/mvp-poll` (build y lint OK) y migracion SQL aplicada en Supabase el 2026-04-23.
+- Flujo MVP: al cerrar un partido el owner elige 3-4 candidatos → se genera link publico `/votar/[pollId]` → se comparte por WhatsApp → cada votante usa el link sin login (1 voto por fingerprint de dispositivo) → el owner cierra la encuesta → el MVP se persiste en `match_days.mvp_player_ids` y se incrementan `players.mvp_count` y `players.mvp_votes_received` (todo atomico via RPC `close_mvp_poll`).
+- Supabase MCP: configurado con `claude mcp add supabase -- npx -y @supabase/mcp-server-supabase@latest --access-token ...`
 
 ## Stack
 
@@ -33,6 +32,7 @@ src/
     jugadores/            -> CRUD de jugadores.
     sorteo/               -> Seleccion de presentes, marca rapida de mejores, sorteo balanceado y compartir por WhatsApp.
     partidos/             -> Historial, resultados y eliminacion de partidos.
+    votar/[pollId]/       -> Pagina publica de votacion MVP (sin login requerido).
   components/
     Navbar.tsx
     ProtectedRoute.tsx
@@ -58,8 +58,10 @@ Tablas:
 - `groups` - Cada turno fijo es un grupo (`owner_id`, `name`).
 - `group_members` - Relacion usuario/grupo (`group_id`, `user_id`).
 - `user_profiles` - Perfil publico minimo para resolver usuarios por correo (`id`, `email`).
-- `players` - Jugadores del grupo (`group_id`, `name`, `level`).
-- `match_days` - Partidos (`group_id`, `date`, `attendees[]`, `team_a[]`, `team_b[]`, `winner`).
+- `players` - Jugadores del grupo (`group_id`, `name`, `level`, `mvp_count`, `mvp_votes_received`).
+- `match_days` - Partidos (`group_id`, `date`, `attendees[]`, `team_a[]`, `team_b[]`, `winner`, `mvp_player_ids[]`).
+- `mvp_polls` - Encuesta MVP por partido (`match_day_id`, `group_id`, `candidates jsonb`, `status open/closed`).
+- `mvp_votes` - Votos de encuesta MVP, 1 por fingerprint de dispositivo por poll.
 
 El schema completo con RLS está en `supabase-schema.sql`.
 
@@ -83,6 +85,11 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"
 - La seccion `/grupos` permite renombrar grupos y eliminar turnos que ya no se usan.
+- Al cerrar un partido, el owner puede crear una encuesta MVP eligiendo 3-4 candidatos presentes en ese partido.
+- La encuesta genera un link publico `/votar/[pollId]` que no requiere login; se comparte por WhatsApp.
+- Cada dispositivo puede votar una sola vez (limitado por fingerprint). La encuesta puede cerrarse manualmente desde `/partidos`.
+- Al cerrar la encuesta, la funcion RPC `close_mvp_poll` determina al ganador atomicamente, persiste en `match_days.mvp_player_ids`, e incrementa `players.mvp_count` para el ganador y `players.mvp_votes_received` para todos los candidatos que recibieron votos.
+- En caso de empate, todos los jugadores empatados quedan como MVP del partido.
 
 ## Variables de entorno
 
