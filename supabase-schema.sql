@@ -15,6 +15,15 @@ create table if not exists group_members (
   primary key (group_id, user_id)
 );
 
+-- Perfiles publicos minimos para resolver miembros por correo
+create table if not exists user_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null check (email = lower(email)),
+  created_at timestamptz default now()
+);
+
+create unique index if not exists user_profiles_email_key on user_profiles (email);
+
 -- Jugadores
 create table if not exists players (
   id uuid default gen_random_uuid() primary key,
@@ -39,45 +48,186 @@ create table if not exists match_days (
 -- Row Level Security (RLS)
 alter table groups enable row level security;
 alter table group_members enable row level security;
+alter table user_profiles enable row level security;
 alter table players enable row level security;
 alter table match_days enable row level security;
 
 -- Solo los miembros del grupo pueden ver/modificar sus datos
+drop policy if exists "members can view their groups" on groups;
 create policy "members can view their groups"
   on groups for select
   using (
-    exists (
+    auth.uid() = owner_id
+    or exists (
       select 1 from group_members
       where group_members.group_id = groups.id
       and group_members.user_id = auth.uid()
     )
   );
 
+drop policy if exists "authenticated users can create groups" on groups;
 create policy "authenticated users can create groups"
   on groups for insert
   with check (auth.uid() = owner_id);
 
-create policy "owner can update group"
+drop policy if exists "owner can update group" on groups;
+drop policy if exists "members can update group" on groups;
+create policy "members can update group"
   on groups for update
-  using (auth.uid() = owner_id);
+  using (
+    auth.uid() = owner_id
+    or exists (
+      select 1 from group_members
+      where group_members.group_id = groups.id
+      and group_members.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = owner_id
+    or exists (
+      select 1 from group_members
+      where group_members.group_id = groups.id
+      and group_members.user_id = auth.uid()
+    )
+  );
 
-create policy "owner can delete group"
+drop policy if exists "owner can delete group" on groups;
+drop policy if exists "members can delete group" on groups;
+create policy "members can delete group"
   on groups for delete
-  using (auth.uid() = owner_id);
+  using (
+    auth.uid() = owner_id
+    or exists (
+      select 1 from group_members
+      where group_members.group_id = groups.id
+      and group_members.user_id = auth.uid()
+    )
+  );
 
 -- group_members policies
+drop policy if exists "members can view group membership" on group_members;
 create policy "members can view group membership"
   on group_members for select
   using (user_id = auth.uid());
 
+drop policy if exists "owner can manage members" on group_members;
 create policy "owner can manage members"
   on group_members for insert
   with check (
-    auth.uid() = user_id
-    or exists (
+    exists (
       select 1 from groups where id = group_id and owner_id = auth.uid()
     )
   );
+
+-- user_profiles policies
+drop policy if exists "users can view own profile" on user_profiles;
+create policy "users can view own profile"
+  on user_profiles for select
+  using (auth.uid() = id);
+
+drop policy if exists "users can insert own profile" on user_profiles;
+create policy "users can insert own profile"
+  on user_profiles for insert
+  with check (auth.uid() = id);
+
+drop policy if exists "users can update own profile" on user_profiles;
+create policy "users can update own profile"
+  on user_profiles for update
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+
+insert into public.user_profiles (id, email)
+select
+  id,
+  lower(email)
+from auth.users
+where email is not null
+on conflict (id) do update
+set email = excluded.email;
+
+create or replace function public.sync_user_profile_from_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.email is null then
+    delete from public.user_profiles
+    where id = new.id;
+
+    return new;
+  end if;
+
+  insert into public.user_profiles (id, email)
+  values (new.id, lower(new.email))
+  on conflict (id) do update
+  set email = excluded.email;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_user_profile_from_auth_user on auth.users;
+create trigger sync_user_profile_from_auth_user
+after insert or update of email on auth.users
+for each row
+execute function public.sync_user_profile_from_auth_user();
+
+create or replace function public.prevent_group_identity_changes()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.id is distinct from old.id then
+    raise exception 'No se puede cambiar el id del grupo';
+  end if;
+
+  if new.owner_id is distinct from old.owner_id then
+    raise exception 'No se puede transferir el owner del grupo';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_group_identity_changes on groups;
+create trigger prevent_group_identity_changes
+before update on groups
+for each row
+execute function public.prevent_group_identity_changes();
+
+create or replace function public.enforce_group_member_limit()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  current_member_count integer;
+begin
+  perform 1
+  from public.groups
+  where id = new.group_id
+  for update;
+
+  select count(*)
+  into current_member_count
+  from public.group_members
+  where group_id = new.group_id;
+
+  if current_member_count >= 3 then
+    raise exception 'Este grupo ya tiene 3 usuarios';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_group_member_limit on group_members;
+create trigger enforce_group_member_limit
+before insert on group_members
+for each row
+execute function public.enforce_group_member_limit();
 
 -- Crea un grupo y agrega al usuario autenticado como miembro en la misma operacion.
 create or replace function public.create_group_with_owner_membership(group_name text)
@@ -89,17 +239,18 @@ as $$
 declare
   new_group_id uuid;
   current_user_id uuid := auth.uid();
+  normalized_group_name text := trim(coalesce(group_name, ''));
 begin
   if current_user_id is null then
     raise exception 'Usuario no autenticado';
   end if;
 
-  if length(trim(group_name)) = 0 then
+  if length(normalized_group_name) = 0 then
     raise exception 'El nombre del grupo es obligatorio';
   end if;
 
   insert into public.groups (name, owner_id)
-  values (trim(group_name), current_user_id)
+  values (normalized_group_name, current_user_id)
   returning id into new_group_id;
 
   insert into public.group_members (group_id, user_id)
@@ -112,9 +263,185 @@ $$;
 revoke all on function public.create_group_with_owner_membership(text) from public;
 grant execute on function public.create_group_with_owner_membership(text) to authenticated;
 
-notify pgrst, 'reload schema';
+create or replace function public.get_group_members(target_group_id uuid)
+returns table (
+  user_id uuid,
+  email text,
+  is_owner boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes acceso a este grupo';
+  end if;
+
+  return query
+  select
+    gm.user_id,
+    up.email,
+    gm.user_id = g.owner_id as is_owner
+  from public.group_members gm
+  join public.groups g on g.id = gm.group_id
+  join public.user_profiles up on up.id = gm.user_id
+  where gm.group_id = target_group_id
+  order by (gm.user_id = g.owner_id) desc, up.email asc;
+end;
+$$;
+
+revoke all on function public.get_group_members(uuid) from public;
+grant execute on function public.get_group_members(uuid) to authenticated;
+
+create or replace function public.add_group_member_by_email(
+  target_group_id uuid,
+  member_email text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  normalized_email text := lower(trim(coalesce(member_email, '')));
+  target_member_id uuid;
+  current_member_count integer;
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if target_group_id is null then
+    raise exception 'Grupo invalido';
+  end if;
+
+  if length(normalized_email) = 0 then
+    raise exception 'El correo es obligatorio';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes permisos para administrar este grupo';
+  end if;
+
+  select id
+  into target_member_id
+  from public.user_profiles
+  where email = normalized_email;
+
+  if target_member_id is null then
+    raise exception 'Ese correo no tiene un usuario registrado en la app';
+  end if;
+
+  if exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = target_member_id
+  ) then
+    raise exception 'Ese usuario ya pertenece al grupo';
+  end if;
+
+  perform 1
+  from public.groups
+  where id = target_group_id
+  for update;
+
+  select count(*)
+  into current_member_count
+  from public.group_members gm
+  where gm.group_id = target_group_id;
+
+  if current_member_count >= 3 then
+    raise exception 'Este grupo ya tiene 3 usuarios';
+  end if;
+
+  insert into public.group_members (group_id, user_id)
+  values (target_group_id, target_member_id);
+
+  return target_member_id;
+end;
+$$;
+
+revoke all on function public.add_group_member_by_email(uuid, text) from public;
+grant execute on function public.add_group_member_by_email(uuid, text) to authenticated;
+
+create or replace function public.remove_group_member(
+  target_group_id uuid,
+  target_user_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  group_owner_id uuid;
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes permisos para administrar este grupo';
+  end if;
+
+  select owner_id
+  into group_owner_id
+  from public.groups
+  where id = target_group_id;
+
+  if group_owner_id is null then
+    raise exception 'Grupo inexistente';
+  end if;
+
+  if target_user_id = group_owner_id then
+    raise exception 'No se puede quitar al owner del grupo';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = target_user_id
+  ) then
+    raise exception 'Ese usuario no pertenece al grupo';
+  end if;
+
+  delete from public.group_members
+  where public.group_members.group_id = target_group_id
+    and public.group_members.user_id = target_user_id;
+end;
+$$;
+
+revoke all on function public.remove_group_member(uuid, uuid) from public;
+grant execute on function public.remove_group_member(uuid, uuid) to authenticated;
 
 -- players policies
+drop policy if exists "members can view players" on players;
 create policy "members can view players"
   on players for select
   using (
@@ -125,6 +452,7 @@ create policy "members can view players"
     )
   );
 
+drop policy if exists "members can manage players" on players;
 create policy "members can manage players"
   on players for insert
   with check (
@@ -135,6 +463,7 @@ create policy "members can manage players"
     )
   );
 
+drop policy if exists "members can update players" on players;
 create policy "members can update players"
   on players for update
   using (
@@ -143,8 +472,16 @@ create policy "members can update players"
       where group_members.group_id = players.group_id
       and group_members.user_id = auth.uid()
     )
+  )
+  with check (
+    exists (
+      select 1 from group_members
+      where group_members.group_id = players.group_id
+      and group_members.user_id = auth.uid()
+    )
   );
 
+drop policy if exists "members can delete players" on players;
 create policy "members can delete players"
   on players for delete
   using (
@@ -156,6 +493,7 @@ create policy "members can delete players"
   );
 
 -- match_days policies
+drop policy if exists "members can view match days" on match_days;
 create policy "members can view match days"
   on match_days for select
   using (
@@ -166,6 +504,7 @@ create policy "members can view match days"
     )
   );
 
+drop policy if exists "members can create match days" on match_days;
 create policy "members can create match days"
   on match_days for insert
   with check (
@@ -176,6 +515,7 @@ create policy "members can create match days"
     )
   );
 
+drop policy if exists "members can update match days" on match_days;
 create policy "members can update match days"
   on match_days for update
   using (
@@ -184,8 +524,16 @@ create policy "members can update match days"
       where group_members.group_id = match_days.group_id
       and group_members.user_id = auth.uid()
     )
+  )
+  with check (
+    exists (
+      select 1 from group_members
+      where group_members.group_id = match_days.group_id
+      and group_members.user_id = auth.uid()
+    )
   );
 
+drop policy if exists "members can delete match days" on match_days;
 create policy "members can delete match days"
   on match_days for delete
   using (
@@ -195,3 +543,5 @@ create policy "members can delete match days"
       and group_members.user_id = auth.uid()
     )
   );
+
+notify pgrst, 'reload schema';

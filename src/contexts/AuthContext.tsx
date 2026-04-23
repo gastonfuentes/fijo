@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase";
+import { syncUserProfile } from "@/lib/db";
 
 interface AuthContextType {
   user: User | null;
@@ -28,18 +29,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const supabase = createClient();
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const hydrateSession = async (nextSession: Session | null) => {
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (nextSession?.user?.email) {
+        try {
+          await syncUserProfile(nextSession.user.id, nextSession.user.email);
+        } catch (error) {
+          console.error("syncUserProfile error:", error);
+        }
+      }
+
       setLoading(false);
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      void hydrateSession(session);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      void hydrateSession(session);
     });
 
     return () => subscription.unsubscribe();

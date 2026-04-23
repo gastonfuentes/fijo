@@ -26,6 +26,12 @@ export interface Group {
   createdAt: number;
 }
 
+export interface GroupMember {
+  userId: string;
+  email: string;
+  isOwner: boolean;
+}
+
 export interface PlayerStats {
   playerId: string;
   name: string;

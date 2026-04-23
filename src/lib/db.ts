@@ -1,5 +1,5 @@
 import { createClient } from "./supabase";
-import { Player, MatchDay, Group, SkillLevel } from "@/types";
+import { Player, MatchDay, Group, GroupMember, SkillLevel } from "@/types";
 
 type UserGroupRow = {
   groups: UserGroupRelation | UserGroupRelation[] | null;
@@ -11,6 +11,16 @@ type UserGroupRelation = {
   owner_id: string;
   created_at: string;
 };
+
+type GroupMemberRow = {
+  user_id: string;
+  email: string;
+  is_owner: boolean;
+};
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 // ---- Groups ----
 
@@ -45,6 +55,24 @@ export async function createGroup(name: string): Promise<string> {
   return groupId;
 }
 
+export async function syncUserProfile(userId: string, email: string) {
+  const supabase = createClient();
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return;
+
+  const { error } = await supabase.from("user_profiles").upsert(
+    {
+      id: userId,
+      email: normalizedEmail,
+    },
+    {
+      onConflict: "id",
+    }
+  );
+
+  if (error) throw error;
+}
+
 export async function getUserGroups(userId: string): Promise<Group[]> {
   const supabase = createClient();
   const { data, error } = await supabase
@@ -70,6 +98,44 @@ export async function getUserGroups(userId: string): Promise<Group[]> {
   }
 
   return groups;
+}
+
+export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("get_group_members", {
+    target_group_id: groupId,
+  });
+
+  if (error) throw error;
+
+  return ((data ?? []) as GroupMemberRow[]).map((row) => ({
+    userId: row.user_id,
+    email: row.email,
+    isOwner: row.is_owner,
+  }));
+}
+
+export async function addGroupMemberByEmail(groupId: string, email: string) {
+  const supabase = createClient();
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) throw new Error("El correo es obligatorio.");
+
+  const { error } = await supabase.rpc("add_group_member_by_email", {
+    target_group_id: groupId,
+    member_email: normalizedEmail,
+  });
+
+  if (error) throw error;
+}
+
+export async function removeGroupMember(groupId: string, userId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("remove_group_member", {
+    target_group_id: groupId,
+    target_user_id: userId,
+  });
+
+  if (error) throw error;
 }
 
 export async function updateGroup(groupId: string, name: string) {

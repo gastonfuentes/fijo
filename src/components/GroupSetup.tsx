@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useGroupContext } from "@/contexts/GroupContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function GroupSetup() {
   const { groups, activeGroup, setActiveGroup, createNewGroup, loading } = useGroupContext();
+  const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -112,11 +114,18 @@ export default function GroupSetup() {
             >
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name}
+                  {group.name} · {group.ownerId === user?.id ? "owner" : "miembro"}
                 </option>
               ))}
             </select>
           </label>
+          {activeGroup && (
+            <div className="flex items-center gap-2">
+              <span className="level-pill border border-fijo-200 bg-white text-fijo-800">
+                {activeGroup.ownerId === user?.id ? "owner" : "miembro"}
+              </span>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
