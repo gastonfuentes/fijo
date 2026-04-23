@@ -7,12 +7,11 @@ import { closeMvpPoll, deleteMvpPoll } from "@/lib/db";
 interface Props {
   poll: MvpPoll;
   results: MvpPollResults;
-  isOwner: boolean;
   playerName: (id: string) => string;
   onPollUpdated: () => void;
 }
 
-export default function MvpPollCard({ poll, results, isOwner, playerName, onPollUpdated }: Props) {
+export default function MvpPollCard({ poll, results, playerName, onPollUpdated }: Props) {
   const [loading, setLoading] = useState(false);
   const pollUrl = typeof window !== "undefined" ? `${window.location.origin}/votar/${poll.id}` : `/votar/${poll.id}`;
 
@@ -113,24 +112,22 @@ export default function MvpPollCard({ poll, results, isOwner, playerName, onPoll
         </button>
       </div>
 
-      {isOwner && (
-        <div className="flex gap-2">
-          <button
-            onClick={handleClose}
-            disabled={loading}
-            className="flex-1 rounded-lg bg-fijo-900 px-3 py-2 text-xs font-black text-white hover:bg-fijo-800 disabled:opacity-40"
-          >
-            {loading ? "Cerrando..." : "Cerrar votación"}
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={loading}
-            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"
-          >
-            Eliminar
-          </button>
-        </div>
-      )}
+      <div className="flex gap-2">
+        <button
+          onClick={handleClose}
+          disabled={loading}
+          className="flex-1 rounded-lg bg-fijo-900 px-3 py-2 text-xs font-black text-white hover:bg-fijo-800 disabled:opacity-40"
+        >
+          {loading ? "Cerrando..." : "Cerrar votación"}
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={loading}
+          className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"
+        >
+          Eliminar
+        </button>
+      </div>
     </div>
   );
 }

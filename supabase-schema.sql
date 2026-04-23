@@ -589,21 +589,36 @@ create policy "anyone can view mvp polls"
   on mvp_polls for select using (true);
 
 drop policy if exists "owner can create mvp polls" on mvp_polls;
-create policy "owner can create mvp polls"
+drop policy if exists "members can create mvp polls" on mvp_polls;
+create policy "members can create mvp polls"
   on mvp_polls for insert with check (
-    exists (select 1 from groups where id = group_id and owner_id = auth.uid())
+    exists (
+      select 1 from group_members
+      where group_members.group_id = mvp_polls.group_id
+      and group_members.user_id = auth.uid()
+    )
   );
 
 drop policy if exists "owner can update mvp polls" on mvp_polls;
-create policy "owner can update mvp polls"
+drop policy if exists "members can update mvp polls" on mvp_polls;
+create policy "members can update mvp polls"
   on mvp_polls for update using (
-    exists (select 1 from groups where id = group_id and owner_id = auth.uid())
+    exists (
+      select 1 from group_members
+      where group_members.group_id = mvp_polls.group_id
+      and group_members.user_id = auth.uid()
+    )
   );
 
 drop policy if exists "owner can delete mvp polls" on mvp_polls;
-create policy "owner can delete mvp polls"
+drop policy if exists "members can delete mvp polls" on mvp_polls;
+create policy "members can delete mvp polls"
   on mvp_polls for delete using (
-    exists (select 1 from groups where id = group_id and owner_id = auth.uid())
+    exists (
+      select 1 from group_members
+      where group_members.group_id = mvp_polls.group_id
+      and group_members.user_id = auth.uid()
+    )
   );
 
 -- mvp_votes policies
@@ -640,9 +655,11 @@ begin
   end if;
 
   if not exists (
-    select 1 from groups where id = v_group_id and owner_id = auth.uid()
+    select 1 from group_members
+    where group_members.group_id = v_group_id
+    and group_members.user_id = auth.uid()
   ) then
-    raise exception 'Solo el owner del grupo puede cerrar la encuesta';
+    raise exception 'Solo los miembros del grupo pueden cerrar la encuesta';
   end if;
 
   -- Sumar votos recibidos a cada jugador candidato

@@ -8,9 +8,9 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Ultima feature entregada: **encuesta MVP por partido** (`feat/mvp-poll`, lista para PR a `main`).
-- Estado: codigo commiteado en `feat/mvp-poll` (build y lint OK) y migracion SQL aplicada en Supabase el 2026-04-23.
-- Flujo MVP: al cerrar un partido el owner elige 3-4 candidatos → se genera link publico `/votar/[pollId]` → se comparte por WhatsApp → cada votante usa el link sin login (1 voto por fingerprint de dispositivo) → el owner cierra la encuesta → el MVP se persiste en `match_days.mvp_player_ids` y se incrementan `players.mvp_count` y `players.mvp_votes_received` (todo atomico via RPC `close_mvp_poll`).
+- Rama activa: `feat/mvp-poll-members` (abre permisos de encuesta MVP a cualquier miembro del grupo; build y lint OK, migracion aplicada en Supabase el 2026-04-23).
+- Feature anterior entregada: encuesta MVP por partido (`feat/mvp-poll`, mergeado a `main` como PR #10).
+- Flujo MVP actual: al cerrar un partido, **cualquier miembro** del grupo elige 3-4 candidatos → se genera link publico `/votar/[pollId]` → se comparte por WhatsApp → cada votante usa el link sin login (1 voto por fingerprint de dispositivo) → un miembro cierra la encuesta → el MVP se persiste en `match_days.mvp_player_ids` y se incrementan `players.mvp_count` y `players.mvp_votes_received` (todo atomico via RPC `close_mvp_poll`).
 - Supabase MCP: configurado con `claude mcp add supabase -- npx -y @supabase/mcp-server-supabase@latest --access-token ...`
 
 ## Stack
@@ -85,11 +85,12 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - El dashboard calcula stats por jugador: partidos jugados, victorias, derrotas, asistencia y faltas
 - Un grupo representa un turno fijo, por ejemplo "Futbol de los jueves"
 - La seccion `/grupos` permite renombrar grupos y eliminar turnos que ya no se usan.
-- Al cerrar un partido, el owner puede crear una encuesta MVP eligiendo 3-4 candidatos presentes en ese partido.
+- Al cerrar un partido, cualquier miembro del grupo puede crear una encuesta MVP eligiendo 3-4 candidatos presentes en ese partido.
 - La encuesta genera un link publico `/votar/[pollId]` que no requiere login; se comparte por WhatsApp.
-- Cada dispositivo puede votar una sola vez (limitado por fingerprint). La encuesta puede cerrarse manualmente desde `/partidos`.
+- Cada dispositivo puede votar una sola vez (limitado por fingerprint). La encuesta puede cerrarse o eliminarse manualmente desde `/partidos` por cualquier miembro del grupo.
 - Al cerrar la encuesta, la funcion RPC `close_mvp_poll` determina al ganador atomicamente, persiste en `match_days.mvp_player_ids`, e incrementa `players.mvp_count` para el ganador y `players.mvp_votes_received` para todos los candidatos que recibieron votos.
 - En caso de empate, todos los jugadores empatados quedan como MVP del partido.
+- Las RLS de `mvp_polls` y la RPC `close_mvp_poll` validan membresia via `group_members`, no `owner_id`. Mantener este patron en cualquier flujo de gestion de encuestas.
 
 ## Variables de entorno
 

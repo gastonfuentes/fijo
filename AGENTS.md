@@ -10,10 +10,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Current Checkpoint
 
-- Last shipped feature: **MVP poll** (`feat/mvp-poll`, ready to merge into `main`).
-- Status: code committed in `feat/mvp-poll` (build and lint pass); SQL migration applied to Supabase project `hduumplgmjzudmwztffp` on 2026-04-23.
-- Previous feature: shared group access (up to 3 app users per group, added by email) — deployed and verified on 2026-04-23.
-- Schema state: `supabase-schema.sql` is idempotent and safe to re-run. Includes the full MVP poll migration (tables `mvp_polls`, `mvp_votes`; new columns on `players` and `match_days`; RPC `close_mvp_poll`).
+- Active feature branch: `feat/mvp-poll-members` — opens MVP poll management (create/close/delete) to any group member, not only the owner.
+- Status: code committed on this branch (build and lint pass); SQL migration `mvp_polls_members_access` applied to Supabase project `hduumplgmjzudmwztffp` on 2026-04-23.
+- Previous shipped feature: MVP poll (`feat/mvp-poll`, merged to `main` as PR #10).
+- Schema state: `supabase-schema.sql` is idempotent. `mvp_polls` RLS policies now check `group_members` membership (names: `"members can create/update/delete mvp polls"`; old `"owner can ..."` policies are dropped). The `close_mvp_poll` RPC validates membership via `group_members` and returns the error `'Solo los miembros del grupo pueden cerrar la encuesta'` when the caller is not a member.
 
 The product flow is:
 
@@ -177,5 +177,6 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Do not bypass RLS assumptions by adding service-role logic to the frontend.
 - Before changing Next.js conventions, routing, metadata, layouts, server/client boundaries, or build config, read the matching guide under `node_modules/next/dist/docs/`.
 - The MVP poll voting page (`/votar/[pollId]`) is intentionally public: it must not require login and must not use auth-gated Supabase calls. Votes are inserted with the anon key; RLS on `mvp_votes` allows insert only when the referenced poll is `open`.
-- Closing an MVP poll must go through the RPC `close_mvp_poll(poll_id)` — never replicate that logic client-side. The RPC is `security definer` and checks that the caller is the group owner.
+- Closing an MVP poll must go through the RPC `close_mvp_poll(poll_id)` — never replicate that logic client-side. The RPC is `security definer` and checks that the caller is a member of the group via `group_members` (not the original `owner_id`).
+- Managing an MVP poll (create, close, delete) is allowed for any member of the group. Do not gate these actions with client-side owner checks; the RLS/RPC membership check is the source of truth. The `GroupContext` only exposes groups where the user is a member, so UI buttons are naturally scoped.
 - In case of a tie, all top-vote players become MVP (`mvp_player_ids` is an array for this reason). Increment `mvp_count` for each winner.

@@ -6,7 +6,6 @@ import GroupSetup from "@/components/GroupSetup";
 import MvpPollModal from "@/components/MvpPollModal";
 import MvpPollCard from "@/components/MvpPollCard";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { useAuth } from "@/contexts/AuthContext";
 import {
   getPlayers,
   getMatchDays,
@@ -20,17 +19,13 @@ import { Player, MatchDay, MvpPoll, MvpPollResults, MvpPollCandidate } from "@/t
 
 export default function PartidosPage() {
   const { activeGroup } = useGroupContext();
-  const { user } = useAuth();
   const [matchDays, setMatchDays] = useState<MatchDay[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [polls, setPolls] = useState<MvpPoll[]>([]);
   const [pollResults, setPollResults] = useState<Record<string, MvpPollResults>>({});
   const [loading, setLoading] = useState(true);
 
-  // Modal state: id del partido para el que se está creando la encuesta
   const [modalMatchId, setModalMatchId] = useState<string | null>(null);
-
-  const isOwner = !!(activeGroup && user && activeGroup.ownerId === user.id);
 
   const load = useCallback(async () => {
     if (!activeGroup) return;
@@ -67,8 +62,7 @@ export default function PartidosPage() {
     if (!activeGroup) return;
     await updateMatchDay(activeGroup.id, matchId, { winner });
     await load();
-    // Solo el owner puede crear la encuesta; abrir modal
-    if (isOwner) setModalMatchId(matchId);
+    setModalMatchId(matchId);
   };
 
   const handleDelete = async (matchId: string) => {
@@ -242,12 +236,10 @@ export default function PartidosPage() {
                           <MvpPollCard
                             poll={poll}
                             results={results}
-                            isOwner={isOwner}
                             playerName={playerName}
                             onPollUpdated={load}
                           />
                         ) : md.mvpPlayerIds.length > 0 ? (
-                          // Poll eliminada pero MVP ya guardado en el partido
                           <div className="mt-4 rounded-lg border border-fijo-200 bg-fijo-50 p-4">
                             <p className="mb-2 text-xs font-bold text-[var(--muted)]">MVP del partido</p>
                             <div className="flex flex-wrap gap-2">
@@ -258,14 +250,14 @@ export default function PartidosPage() {
                               ))}
                             </div>
                           </div>
-                        ) : isOwner ? (
+                        ) : (
                           <button
                             onClick={() => setModalMatchId(md.id)}
                             className="mt-4 w-full rounded-lg border border-fijo-300 bg-white px-4 py-3 text-sm font-black text-fijo-800 hover:bg-fijo-50"
                           >
                             Crear encuesta MVP
                           </button>
-                        ) : null}
+                        )}
                       </>
                     )}
 
