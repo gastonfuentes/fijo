@@ -10,15 +10,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Current Checkpoint
 
-- Active feature branch: `feat/manual-match` — adds `/partidos/nuevo` page for manually loading a match (arbitrary date, per-player A/B assignment, optional winner). No schema changes.
-- Previous shipped feature: `feat/mvp-poll-members` — opens MVP poll management to any group member (merged to `main` as PR #11).
-- Schema state: `supabase-schema.sql` is idempotent. `mvp_polls` RLS policies check `group_members` membership (names: `"members can create/update/delete mvp polls"`; old `"owner can ..."` policies are dropped). The `close_mvp_poll` RPC validates membership via `group_members` and returns the error `'Solo los miembros del grupo pueden cerrar la encuesta'` when the caller is not a member.
+- Active feature branch: `feat/group-observers` — adds read-only group access via public code. Users logged in can join any group as "observer" by entering an 8-char alphanumeric code, without consuming the 3-member limit.
+- Previous shipped feature: `feat/manual-match` — adds `/partidos/nuevo` page for manually loading a match (arbitrary date, per-player A/B assignment, optional winner). Merged to `main`.
+- Schema state: `supabase-schema.sql` is idempotent. New in this branch: columns `public_code` and `code_created_at` on `groups`, new table `group_observers`, and RPCs `generate_group_public_code`, `revoke_group_public_code`, `join_group_as_observer`, `leave_group_observer`, `get_group_observers`, `remove_group_observer`. SELECT policies on `groups`, `players` and `match_days` now permit both full members (`group_members`) and observers (`group_observers`). INSERT/UPDATE/DELETE policies still require `group_members` only — observers cannot edit. `mvp_polls` RLS policies check `group_members` membership; the `close_mvp_poll` RPC validates membership via `group_members` and returns `'Solo los miembros del grupo pueden cerrar la encuesta'` when the caller is not a member.
 
 The product flow is:
 
 1. Sign in with Google through Supabase Auth.
-2. Create a football group or join one where the user was added by email.
-3. Select the active group and distinguish owned groups from shared groups.
+2. Create a football group, join one where the user was added by email, or observe one via a public code.
+3. Select the active group and distinguish owned groups, shared groups, and observed (read-only) groups.
 4. Manage group names, members, or delete groups that are no longer used.
 5. Add players to the group.
 6. Select today's attendees and quickly mark the best players for that match.
@@ -28,6 +28,7 @@ The product flow is:
 10. Alternatively, load a past match manually from `/partidos/nuevo`: pick a date, assign each player to Team A, Team B, or Absent, and optionally set the winner in one step.
 11. Optionally create an MVP poll: pick 3–4 candidate players, share the public voting link via WhatsApp, let anyone vote (one vote per device), then close the poll to persist the winner.
 12. Review attendance, result, and MVP stats in the dashboard.
+13. Share a read-only link: from `/grupos`, any full member can generate an 8-char public code and share it via WhatsApp. Other logged-in users paste the code to join as observers and see only the dashboard.
 
 Current `/sorteo` behavior:
 
@@ -41,11 +42,13 @@ Current `/sorteo` behavior:
 
 Current `/grupos` behavior:
 
-- A group can have up to 3 app users in total.
+- A group can have up to 3 full app users (`group_members`) plus unlimited observers (`group_observers`).
 - Members are added by email only if that user already signed into the app at least once.
-- Owned groups and invited groups are shown together in the UI with clear role badges.
-- Any group member can rename the group, delete it, and manage non-owner members.
+- Owned groups, invited groups, and observed groups are shown together in the UI with clear role badges (`owner` / `miembro` / `observador`).
+- Any full group member can rename the group, delete it, manage non-owner members, generate/regenerate/revoke the public code, and remove observers.
 - The original `owner_id` remains fixed as the technical owner and cannot be transferred or removed in the app.
+- Observers can only see `/dashboard` and `/grupos`. `RequireEditor` redirects observers hitting `/jugadores`, `/partidos`, `/partidos/nuevo` or `/sorteo` to `/dashboard`. The Navbar hides editor-only links when `isReadOnly` is true.
+- Observers can leave the group on their own from `/grupos`; that only removes their row from `group_observers` and does not affect the group.
 
 ## Stack
 
@@ -90,6 +93,7 @@ src/
   components/
     Navbar.tsx
     ProtectedRoute.tsx
+    RequireEditor.tsx     Redirects to /dashboard when the active group is observed (read-only).
     GroupSetup.tsx
   contexts/
     AuthContext.tsx       Supabase Auth session state.
@@ -118,12 +122,13 @@ The schema is in `supabase-schema.sql`.
 
 Tables:
 
-- `groups`
-- `group_members`
+- `groups` (includes `public_code text unique`, `code_created_at timestamptz`)
+- `group_members` (full members; max 3 per group enforced by `enforce_group_member_limit` trigger)
+- `group_observers` (read-only observers; unlimited per group; INSERT only via RPC `join_group_as_observer`)
 - `user_profiles`
 - `players` (includes `mvp_count`, `mvp_votes_received`)
 - `match_days` (includes `mvp_player_ids uuid[]`)
-- `mvp_polls` (one per match day; RLS: select public, insert/update/delete owner only)
+- `mvp_polls` (one per match day; RLS: select public, insert/update/delete members only)
 - `mvp_votes` (one per `poll_id + voter_fingerprint`; insert allowed on open polls without login)
 
 All tables use RLS. Data access should go through `src/lib/db.ts` unless there is a strong reason to add a new helper.
@@ -169,6 +174,7 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 
 - Most route components are client components because auth, routing, and Supabase browser state are client-side today.
 - Keep route protection consistent with `ProtectedRoute`.
+- Wrap any editable page (one that mutates group data) with `RequireEditor` so observed groups get redirected to `/dashboard`. Read-only pages like `/dashboard` and `/grupos` do not need it — they must render correctly for observers but hide edit actions when `GroupContext.isReadOnly` is true.
 - Keep group-dependent pages wrapped with `GroupSetup` and render the main page content only when `activeGroup` exists.
 - Group membership by email depends on `user_profiles` plus SQL functions in `supabase-schema.sql`; the schema also backfills/syncs `user_profiles` from `auth.users`, and the frontend keeps the client-side sync as a compatible fallback. The member-management functions must keep all `group_members` column references qualified (`gm.user_id`, etc.) to avoid PL/pgSQL ambiguity with output-column names. Keep this flow browser-safe and do not add service-role keys to the frontend.
 - In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, best-player toggles must stay disabled for absent players, and quick-created players should be added as `tranqui` and marked present immediately.
@@ -181,3 +187,6 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Closing an MVP poll must go through the RPC `close_mvp_poll(poll_id)` — never replicate that logic client-side. The RPC is `security definer` and checks that the caller is a member of the group via `group_members` (not the original `owner_id`).
 - Managing an MVP poll (create, close, delete) is allowed for any member of the group. Do not gate these actions with client-side owner checks; the RLS/RPC membership check is the source of truth. The `GroupContext` only exposes groups where the user is a member, so UI buttons are naturally scoped.
 - In case of a tie, all top-vote players become MVP (`mvp_player_ids` is an array for this reason). Increment `mvp_count` for each winner.
+- Public group codes are 8 chars from the alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no 0/O/1/I). Generation/revocation is through security-definer RPCs that require `group_members` membership — do not write directly to `groups.public_code` from the client.
+- Joining as observer is only via RPC `join_group_as_observer(code)`. The RPC rejects callers that are already full members of the group. Do not add a fallback that inserts directly into `group_observers` from the client; the RLS intentionally blocks INSERT there.
+- When adding new tables that store group-scoped data, extend their SELECT RLS to permit both `group_members` AND `group_observers` lookups, mirroring the pattern used in `players`, `match_days`, and `groups`. INSERT/UPDATE/DELETE must remain members-only so observers cannot mutate state.

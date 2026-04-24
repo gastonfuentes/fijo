@@ -63,6 +63,11 @@ create policy "members can view their groups"
       where group_members.group_id = groups.id
       and group_members.user_id = auth.uid()
     )
+    or exists (
+      select 1 from group_observers go
+      where go.group_id = groups.id
+      and go.user_id = auth.uid()
+    )
   );
 
 drop policy if exists "authenticated users can create groups" on groups;
@@ -450,6 +455,11 @@ create policy "members can view players"
       where group_members.group_id = players.group_id
       and group_members.user_id = auth.uid()
     )
+    or exists (
+      select 1 from group_observers go
+      where go.group_id = players.group_id
+      and go.user_id = auth.uid()
+    )
   );
 
 drop policy if exists "members can manage players" on players;
@@ -501,6 +511,11 @@ create policy "members can view match days"
       select 1 from group_members
       where group_members.group_id = match_days.group_id
       and group_members.user_id = auth.uid()
+    )
+    or exists (
+      select 1 from group_observers go
+      where go.group_id = match_days.group_id
+      and go.user_id = auth.uid()
     )
   );
 
@@ -707,5 +722,291 @@ $$;
 
 revoke all on function public.close_mvp_poll(uuid) from public;
 grant execute on function public.close_mvp_poll(uuid) to authenticated;
+
+-- ============================================================
+-- OBSERVADORES DE GRUPO: acceso de solo lectura por codigo publico
+-- ============================================================
+
+alter table groups add column if not exists public_code text;
+alter table groups add column if not exists code_created_at timestamptz;
+
+create unique index if not exists groups_public_code_key on groups (public_code)
+  where public_code is not null;
+
+-- Observadores: usuarios logueados que pueden ver el grupo pero no editar
+create table if not exists group_observers (
+  group_id uuid references groups(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (group_id, user_id)
+);
+
+alter table group_observers enable row level security;
+
+drop policy if exists "self or members can view observers" on group_observers;
+create policy "self or members can view observers"
+  on group_observers for select
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from group_members gm
+      where gm.group_id = group_observers.group_id
+      and gm.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "self or members can remove observers" on group_observers;
+create policy "self or members can remove observers"
+  on group_observers for delete
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from group_members gm
+      where gm.group_id = group_observers.group_id
+      and gm.user_id = auth.uid()
+    )
+  );
+
+-- INSERT/UPDATE bloqueados: solo via RPC security definer.
+
+-- Genera o regenera el codigo publico del grupo. Cualquier miembro pleno puede hacerlo.
+create or replace function public.generate_group_public_code(target_group_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  alphabet_length int := length(alphabet);
+  candidate text;
+  attempt int := 0;
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if target_group_id is null then
+    raise exception 'Grupo invalido';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes permisos para administrar este grupo';
+  end if;
+
+  loop
+    candidate := '';
+    for i in 1..8 loop
+      candidate := candidate || substr(alphabet, 1 + floor(random() * alphabet_length)::int, 1);
+    end loop;
+
+    if not exists (select 1 from public.groups where public_code = candidate) then
+      exit;
+    end if;
+
+    attempt := attempt + 1;
+    if attempt > 10 then
+      raise exception 'No se pudo generar un codigo unico, intenta de nuevo';
+    end if;
+  end loop;
+
+  update public.groups
+    set public_code = candidate,
+        code_created_at = now()
+    where id = target_group_id;
+
+  return candidate;
+end;
+$$;
+
+revoke all on function public.generate_group_public_code(uuid) from public;
+grant execute on function public.generate_group_public_code(uuid) to authenticated;
+
+-- Revoca el codigo publico del grupo.
+create or replace function public.revoke_group_public_code(target_group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes permisos para administrar este grupo';
+  end if;
+
+  update public.groups
+    set public_code = null,
+        code_created_at = null
+    where id = target_group_id;
+end;
+$$;
+
+revoke all on function public.revoke_group_public_code(uuid) from public;
+grant execute on function public.revoke_group_public_code(uuid) to authenticated;
+
+-- Unirse a un grupo como observador usando su codigo publico.
+create or replace function public.join_group_as_observer(code text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  normalized_code text := upper(trim(coalesce(code, '')));
+  target_group_id uuid;
+begin
+  if current_user_id is null then
+    raise exception 'Tenes que iniciar sesion para unirte a un grupo';
+  end if;
+
+  if length(normalized_code) = 0 then
+    raise exception 'El codigo es obligatorio';
+  end if;
+
+  select id into target_group_id
+    from public.groups
+    where public_code = normalized_code;
+
+  if target_group_id is null then
+    raise exception 'Codigo invalido o expirado';
+  end if;
+
+  if exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'Ya sos miembro pleno de este grupo';
+  end if;
+
+  insert into public.group_observers (group_id, user_id)
+    values (target_group_id, current_user_id)
+    on conflict (group_id, user_id) do nothing;
+
+  return target_group_id;
+end;
+$$;
+
+revoke all on function public.join_group_as_observer(text) from public;
+grant execute on function public.join_group_as_observer(text) to authenticated;
+
+-- Dejar de observar un grupo (uno mismo).
+create or replace function public.leave_group_observer(target_group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  delete from public.group_observers go
+    where go.group_id = target_group_id
+      and go.user_id = current_user_id;
+end;
+$$;
+
+revoke all on function public.leave_group_observer(uuid) from public;
+grant execute on function public.leave_group_observer(uuid) to authenticated;
+
+-- Listar observadores de un grupo con email. Solo visible para miembros plenos.
+create or replace function public.get_group_observers(target_group_id uuid)
+returns table (
+  user_id uuid,
+  email text,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes acceso a este grupo';
+  end if;
+
+  return query
+  select
+    go.user_id,
+    up.email,
+    go.created_at
+  from public.group_observers go
+  join public.user_profiles up on up.id = go.user_id
+  where go.group_id = target_group_id
+  order by go.created_at asc;
+end;
+$$;
+
+revoke all on function public.get_group_observers(uuid) from public;
+grant execute on function public.get_group_observers(uuid) to authenticated;
+
+-- Quitar a un observador especifico (cualquier miembro pleno puede).
+create or replace function public.remove_group_observer(
+  target_group_id uuid,
+  target_user_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Usuario no autenticado';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = target_group_id
+      and gm.user_id = current_user_id
+  ) then
+    raise exception 'No tienes permisos para administrar este grupo';
+  end if;
+
+  delete from public.group_observers go
+    where go.group_id = target_group_id
+      and go.user_id = target_user_id;
+end;
+$$;
+
+revoke all on function public.remove_group_observer(uuid, uuid) from public;
+grant execute on function public.remove_group_observer(uuid, uuid) to authenticated;
 
 notify pgrst, 'reload schema';

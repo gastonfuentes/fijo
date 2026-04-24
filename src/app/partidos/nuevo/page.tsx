@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
 import { getPlayers, createMatchDay } from "@/lib/db";
@@ -83,6 +84,7 @@ export default function NuevoPartidoPage() {
 
   return (
     <ProtectedRoute>
+      <RequireEditor>
       <GroupSetup />
       {activeGroup && (
         <div className="page-shell">
@@ -267,6 +269,7 @@ export default function NuevoPartidoPage() {
           )}
         </div>
       )}
+      </RequireEditor>
     </ProtectedRoute>
   );
 }

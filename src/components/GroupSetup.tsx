@@ -2,15 +2,25 @@
 
 import { useState } from "react";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { joinGroupAsObserver } from "@/lib/db";
+import { GroupRole } from "@/types";
+
+function roleLabel(role: GroupRole | undefined) {
+  if (role === "observer") return "observador";
+  if (role === "owner") return "owner";
+  return "miembro";
+}
 
 export default function GroupSetup() {
-  const { groups, activeGroup, setActiveGroup, createNewGroup, loading } = useGroupContext();
-  const { user } = useAuth();
-  const [showCreate, setShowCreate] = useState(false);
+  const { groups, activeGroup, setActiveGroup, createNewGroup, reload, loading } =
+    useGroupContext();
+  const [mode, setMode] = useState<"none" | "create" | "join">("none");
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
 
   if (loading) {
     return (
@@ -25,72 +35,160 @@ export default function GroupSetup() {
     );
   }
 
-  if (groups.length === 0 || showCreate) {
+  const showOnboarding = groups.length === 0 || mode !== "none";
+
+  if (showOnboarding) {
     return (
       <div className="page-shell">
         <section className="surface mx-auto max-w-xl p-6 sm:p-8">
           <p className="eyebrow mb-3">grupo activo</p>
           <h2 className="text-3xl font-black leading-tight text-fijo-900">
-            {groups.length === 0 ? "Crea tu primer grupo" : "Nuevo grupo"}
+            {groups.length === 0
+              ? "Empeza con fijo"
+              : mode === "join"
+                ? "Unirme a un grupo"
+                : "Nuevo grupo"}
           </h2>
           <p className="muted-copy mt-3 text-sm">
-            Un grupo es tu turno fijo de futbol con tus amigos. Despues podes
-            cargar jugadores, presentes y partidos.
+            {mode === "join"
+              ? "Pega el codigo que te compartio un miembro para ver su dashboard en modo solo lectura."
+              : "Un grupo es tu turno fijo de futbol con tus amigos. Despues podes cargar jugadores, presentes y partidos."}
           </p>
-          <form
-            className="mt-6 space-y-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!name.trim()) return;
-              setCreating(true);
-              setError("");
-              try {
-                await createNewGroup(name.trim());
-                setName("");
-                setShowCreate(false);
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Error desconocido");
-              } finally {
-                setCreating(false);
-              }
-            }}
-          >
-            {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
-                {error}
+
+          {mode !== "join" ? (
+            <form
+              className="mt-6 space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!name.trim()) return;
+                setCreating(true);
+                setError("");
+                try {
+                  await createNewGroup(name.trim());
+                  setName("");
+                  setMode("none");
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Error desconocido");
+                } finally {
+                  setCreating(false);
+                }
+              }}
+            >
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+                  {error}
+                </div>
+              )}
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-[var(--ink-soft)]">
+                  Nombre del grupo
+                </span>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ej: Futbol de los jueves"
+                  className="field"
+                />
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="submit"
+                  disabled={creating || !name.trim()}
+                  className="btn-primary flex-1"
+                >
+                  {creating ? "Creando..." : "Crear grupo"}
+                </button>
+                {groups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMode("none")}
+                    className="btn-secondary"
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
-            )}
-            <label className="block">
-              <span className="mb-2 block text-sm font-bold text-[var(--ink-soft)]">
-                Nombre del grupo
-              </span>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ej: Futbol de los jueves"
-                className="field"
-              />
-            </label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="submit"
-                disabled={creating || !name.trim()}
-                className="btn-primary flex-1"
-              >
-                {creating ? "Creando..." : "Crear grupo"}
-              </button>
-              {groups.length > 0 && (
+            </form>
+          ) : (
+            <form
+              className="mt-6 space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const code = joinCode.trim();
+                if (!code) return;
+                setJoining(true);
+                setJoinError("");
+                try {
+                  const groupId = await joinGroupAsObserver(code);
+                  setJoinCode("");
+                  setMode("none");
+                  await reload(groupId);
+                } catch (err) {
+                  setJoinError(err instanceof Error ? err.message : "Error desconocido");
+                } finally {
+                  setJoining(false);
+                }
+              }}
+            >
+              {joinError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+                  {joinError}
+                </div>
+              )}
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-[var(--ink-soft)]">
+                  Codigo del grupo
+                </span>
+                <input
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="Ej: A7KQ3XJP"
+                  className="field font-mono tracking-[0.2em] uppercase"
+                  maxLength={16}
+                />
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="submit"
+                  disabled={joining || !joinCode.trim()}
+                  className="btn-primary flex-1"
+                >
+                  {joining ? "Uniendome..." : "Unirme como observador"}
+                </button>
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
+                  onClick={() => {
+                    setMode("none");
+                    setJoinError("");
+                  }}
                   className="btn-secondary"
                 >
                   Cancelar
                 </button>
-              )}
+              </div>
+            </form>
+          )}
+
+          {groups.length === 0 && mode === "none" && (
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setMode("create")}
+                className="btn-primary flex-1"
+              >
+                Crear mi grupo
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("join")}
+                className="btn-secondary flex-1"
+              >
+                Tengo un codigo
+              </button>
             </div>
-          </form>
+          )}
         </section>
       </div>
     );
@@ -114,7 +212,7 @@ export default function GroupSetup() {
             >
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name} · {group.ownerId === user?.id ? "owner" : "miembro"}
+                  {group.name} · {roleLabel(group.role)}
                 </option>
               ))}
             </select>
@@ -122,17 +220,24 @@ export default function GroupSetup() {
           {activeGroup && (
             <div className="flex items-center gap-2">
               <span className="level-pill border border-fijo-200 bg-white text-fijo-800">
-                {activeGroup.ownerId === user?.id ? "owner" : "miembro"}
+                {roleLabel(activeGroup.role)}
               </span>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setShowCreate(true)}
+              onClick={() => setMode("create")}
               className="btn-secondary min-h-10 px-3 py-2 text-sm"
             >
               Nuevo grupo
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("join")}
+              className="btn-ghost min-h-10 px-3 py-2 text-sm"
+            >
+              Unirme con codigo
             </button>
             {groups.length > 1 && (
               <button
