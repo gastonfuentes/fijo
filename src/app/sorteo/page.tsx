@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
 import { addPlayer, getPlayers, createMatchDay } from "@/lib/db";
@@ -260,6 +261,7 @@ export default function SorteoPage() {
 
   return (
     <ProtectedRoute>
+      <RequireEditor>
       <GroupSetup />
       {activeGroup && (
         <div className="page-shell">
@@ -507,6 +509,7 @@ export default function SorteoPage() {
           )}
         </div>
       )}
+      </RequireEditor>
     </ProtectedRoute>
   );
 }

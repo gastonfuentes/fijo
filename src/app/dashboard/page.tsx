@@ -50,7 +50,7 @@ function getPlayerAttendanceRate(player: PlayerStats, totalMatches: number) {
 }
 
 export default function DashboardPage() {
-  const { activeGroup } = useGroupContext();
+  const { activeGroup, isReadOnly } = useGroupContext();
   const [stats, setStats] = useState<PlayerStats[]>([]);
   const [totalMatches, setTotalMatches] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -97,6 +97,11 @@ export default function DashboardPage() {
       <GroupSetup />
       {activeGroup && (
         <div className="page-shell">
+          {isReadOnly && (
+            <div className="mb-4 rounded-lg border border-fijo-200 bg-fijo-50/60 p-3 text-sm font-semibold text-fijo-800">
+              Estas viendo <span className="font-black">{activeGroup.name}</span> en modo solo lectura. No podes editar jugadores, partidos ni sorteos.
+            </div>
+          )}
           <header className="mb-8 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
             <div>
               <p className="eyebrow mb-2">panel del grupo</p>
@@ -107,12 +112,14 @@ export default function DashboardPage() {
                 {totalMatches} partidos jugados, asistencia y rachas del grupo.
               </p>
             </div>
-            <Link
-              href="/sorteo"
-              className="btn-primary"
-            >
-              Nuevo sorteo
-            </Link>
+            {!isReadOnly && (
+              <Link
+                href="/sorteo"
+                className="btn-primary"
+              >
+                Nuevo sorteo
+              </Link>
+            )}
           </header>
 
           {loading ? (
@@ -128,18 +135,23 @@ export default function DashboardPage() {
             <div className="surface mx-auto max-w-xl p-8 text-center">
               <p className="eyebrow mb-2">sin datos todavia</p>
               <h2 className="text-2xl font-black text-fijo-900">
-                Carga jugadores para ver el ranking
+                {isReadOnly
+                  ? "Este grupo todavia no cargo jugadores"
+                  : "Carga jugadores para ver el ranking"}
               </h2>
               <p className="muted-copy mx-auto mt-3 max-w-md text-sm">
-                Cuando guardes partidos, este panel va a mostrar asistencia,
-                victorias y faltas sin tocar planillas.
+                {isReadOnly
+                  ? "Cuando un miembro del grupo cargue jugadores y partidos, vas a ver las estadisticas aca."
+                  : "Cuando guardes partidos, este panel va a mostrar asistencia, victorias y faltas sin tocar planillas."}
               </p>
-              <Link
-                href="/jugadores"
-                className="btn-primary mt-6"
-              >
-                Agregar jugadores
-              </Link>
+              {!isReadOnly && (
+                <Link
+                  href="/jugadores"
+                  className="btn-primary mt-6"
+                >
+                  Agregar jugadores
+                </Link>
+              )}
             </div>
           ) : (
             <>

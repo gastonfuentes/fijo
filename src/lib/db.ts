@@ -1,5 +1,5 @@
 import { createClient } from "./supabase";
-import { Player, MatchDay, Group, GroupMember, SkillLevel, MvpPoll, MvpPollResults, MvpPollCandidate } from "@/types";
+import { Player, MatchDay, Group, GroupMember, GroupObserver, SkillLevel, MvpPoll, MvpPollResults, MvpPollCandidate } from "@/types";
 
 type UserGroupRow = {
   groups: UserGroupRelation | UserGroupRelation[] | null;
@@ -10,12 +10,19 @@ type UserGroupRelation = {
   name: string;
   owner_id: string;
   created_at: string;
+  public_code: string | null;
 };
 
 type GroupMemberRow = {
   user_id: string;
   email: string;
   is_owner: boolean;
+};
+
+type GroupObserverRow = {
+  user_id: string;
+  email: string;
+  created_at: string;
 };
 
 function normalizeEmail(email: string) {
@@ -75,25 +82,53 @@ export async function syncUserProfile(userId: string, email: string) {
 
 export async function getUserGroups(userId: string): Promise<Group[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("group_members")
-    .select("group_id, groups(id, name, owner_id, created_at)")
-    .eq("user_id", userId);
-  if (error) throw error;
 
-  const rows = (data ?? []) as unknown as UserGroupRow[];
+  const [memberRes, observerRes] = await Promise.all([
+    supabase
+      .from("group_members")
+      .select("group_id, groups(id, name, owner_id, created_at, public_code)")
+      .eq("user_id", userId),
+    supabase
+      .from("group_observers")
+      .select("group_id, groups(id, name, owner_id, created_at, public_code)")
+      .eq("user_id", userId),
+  ]);
+
+  if (memberRes.error) throw memberRes.error;
+  if (observerRes.error) throw observerRes.error;
+
   const groups: Group[] = [];
+  const seen = new Set<string>();
 
-  for (const row of rows) {
+  const memberRows = (memberRes.data ?? []) as unknown as UserGroupRow[];
+  for (const row of memberRows) {
     const group = Array.isArray(row.groups) ? row.groups[0] : row.groups;
-    if (!group) continue;
-
+    if (!group || seen.has(group.id)) continue;
+    seen.add(group.id);
     groups.push({
       id: group.id,
       name: group.name,
       ownerId: group.owner_id,
       memberIds: [],
       createdAt: new Date(group.created_at).getTime(),
+      role: group.owner_id === userId ? "owner" : "member",
+      publicCode: group.public_code,
+    });
+  }
+
+  const observerRows = (observerRes.data ?? []) as unknown as UserGroupRow[];
+  for (const row of observerRows) {
+    const group = Array.isArray(row.groups) ? row.groups[0] : row.groups;
+    if (!group || seen.has(group.id)) continue;
+    seen.add(group.id);
+    groups.push({
+      id: group.id,
+      name: group.name,
+      ownerId: group.owner_id,
+      memberIds: [],
+      createdAt: new Date(group.created_at).getTime(),
+      role: "observer",
+      publicCode: null,
     });
   }
 
@@ -162,6 +197,68 @@ export async function deleteGroup(groupId: string) {
     .select("id")
     .single();
 
+  if (error) throw error;
+}
+
+// ---- Group observers (acceso de solo lectura por codigo) ----
+
+export async function generateGroupPublicCode(groupId: string): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("generate_group_public_code", {
+    target_group_id: groupId,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function revokeGroupPublicCode(groupId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("revoke_group_public_code", {
+    target_group_id: groupId,
+  });
+  if (error) throw error;
+}
+
+export async function joinGroupAsObserver(code: string): Promise<string> {
+  const supabase = createClient();
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) throw new Error("El codigo es obligatorio.");
+
+  const { data, error } = await supabase.rpc("join_group_as_observer", {
+    code: normalized,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function leaveGroupObserver(groupId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("leave_group_observer", {
+    target_group_id: groupId,
+  });
+  if (error) throw error;
+}
+
+export async function getGroupObservers(groupId: string): Promise<GroupObserver[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("get_group_observers", {
+    target_group_id: groupId,
+  });
+  if (error) throw error;
+
+  return ((data ?? []) as GroupObserverRow[]).map((row) => ({
+    userId: row.user_id,
+    email: row.email,
+    createdAt: new Date(row.created_at).getTime(),
+  }));
+}
+
+export async function removeGroupObserver(groupId: string, userId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("remove_group_observer", {
+    target_group_id: groupId,
+    target_user_id: userId,
+  });
   if (error) throw error;
 }
 

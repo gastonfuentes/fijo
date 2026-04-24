@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
 import { getPlayers, addPlayer, updatePlayer, deletePlayer } from "@/lib/db";
@@ -52,6 +53,7 @@ export default function JugadoresPage() {
 
   return (
     <ProtectedRoute>
+      <RequireEditor>
       <GroupSetup />
       {activeGroup && (
         <div className="page-shell">
@@ -168,6 +170,7 @@ export default function JugadoresPage() {
           )}
         </div>
       )}
+      </RequireEditor>
     </ProtectedRoute>
   );
 }

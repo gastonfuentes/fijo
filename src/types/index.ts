@@ -45,18 +45,28 @@ export interface MvpPollResults {
   winners: string[]; // playerIds
 }
 
+export type GroupRole = "owner" | "member" | "observer";
+
 export interface Group {
   id: string;
   name: string;
   ownerId: string;
   memberIds: string[];
   createdAt: number;
+  role?: GroupRole;
+  publicCode?: string | null;
 }
 
 export interface GroupMember {
   userId: string;
   email: string;
   isOwner: boolean;
+}
+
+export interface GroupObserver {
+  userId: string;
+  email: string;
+  createdAt: number;
 }
 
 export interface PlayerStats {

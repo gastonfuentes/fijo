@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import MvpPollModal from "@/components/MvpPollModal";
 import MvpPollCard from "@/components/MvpPollCard";
@@ -99,6 +100,7 @@ export default function PartidosPage() {
 
   return (
     <ProtectedRoute>
+      <RequireEditor>
       <GroupSetup />
       {activeGroup && (
         <div className="page-shell">
@@ -296,6 +298,7 @@ export default function PartidosPage() {
           onCancel={() => setModalMatchId(null)}
         />
       )}
+      </RequireEditor>
     </ProtectedRoute>
   );
 }

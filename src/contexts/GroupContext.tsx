@@ -10,6 +10,7 @@ interface GroupContextType {
   activeGroup: Group | null;
   setActiveGroup: (g: Group) => void;
   loading: boolean;
+  isReadOnly: boolean;
   createNewGroup: (name: string) => Promise<string | undefined>;
   reload: (preferredGroupId?: string) => Promise<void>;
 }
@@ -19,6 +20,7 @@ const GroupContext = createContext<GroupContextType>({
   activeGroup: null,
   setActiveGroup: () => {},
   loading: true,
+  isReadOnly: false,
   createNewGroup: async () => undefined,
   reload: async () => {},
 });
@@ -70,9 +72,11 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const isReadOnly = activeGroup?.role === "observer";
+
   return (
     <GroupContext.Provider
-      value={{ groups, activeGroup, setActiveGroup, loading, createNewGroup, reload: loadGroups }}
+      value={{ groups, activeGroup, setActiveGroup, loading, isReadOnly, createNewGroup, reload: loadGroups }}
     >
       {children}
     </GroupContext.Provider>

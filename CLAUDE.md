@@ -8,8 +8,9 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Rama activa: `feat/manual-match` (carga manual de partidos con fecha arbitraria; sin cambios de schema).
-- Feature anterior entregada: `feat/mvp-poll-members` (abre permisos de encuesta MVP a cualquier miembro del grupo; mergeado a `main` como PR #11).
+- Rama activa: `feat/group-observers` (acceso de solo lectura a grupos via codigo publico; agrega tabla `group_observers`, columnas `public_code` + `code_created_at` en `groups`, y RPCs `generate_group_public_code`, `revoke_group_public_code`, `join_group_as_observer`, `leave_group_observer`, `get_group_observers`, `remove_group_observer`).
+- Feature anterior entregada: `feat/manual-match` (carga manual de partidos con fecha arbitraria; mergeada a `main`).
+- Flujo observadores: en `/grupos` cualquier miembro pleno genera un codigo alfanumerico de 8 caracteres (alfabeto sin 0/O/1/I) y lo comparte (boton WhatsApp incluido). Otro usuario logueado pega el codigo en `/grupos` o en `GroupSetup` → RPC `join_group_as_observer` lo suma a `group_observers` → el grupo aparece en su dropdown con badge "observador" → `isReadOnly` del `GroupContext` oculta edicion. `RequireEditor` redirige a `/dashboard` desde `/jugadores`, `/partidos`, `/partidos/nuevo` y `/sorteo`. Los observadores NO cuentan contra el limite de 3 miembros plenos.
 - Flujo carga manual: desde `/partidos` → boton "+ Cargar partido manual" → `/partidos/nuevo` → el usuario elige fecha (cualquier fecha pasada), asigna cada jugador al Equipo A, Equipo B o Ausente, y opcionalmente registra el ganador en el mismo formulario → llama a `createMatchDay` con los datos y redirige a `/partidos`. Sin cambios de schema ni nuevas funciones SQL.
 - Flujo MVP actual: al cerrar un partido, **cualquier miembro** del grupo elige 3-4 candidatos → se genera link publico `/votar/[pollId]` → se comparte por WhatsApp → cada votante usa el link sin login (1 voto por fingerprint de dispositivo) → un miembro cierra la encuesta → el MVP se persiste en `match_days.mvp_player_ids` y se incrementan `players.mvp_count` y `players.mvp_votes_received` (todo atomico via RPC `close_mvp_poll`).
 - Supabase MCP: configurado con `claude mcp add supabase -- npx -y @supabase/mcp-server-supabase@latest --access-token ...`
@@ -38,6 +39,7 @@ src/
   components/
     Navbar.tsx
     ProtectedRoute.tsx
+    RequireEditor.tsx     -> Redirige a /dashboard cuando el grupo activo es observado (solo lectura).
     GroupSetup.tsx
   contexts/
     AuthContext.tsx       -> Supabase Auth.
@@ -57,8 +59,9 @@ Proyecto: `hduumplgmjzudmwztffp`
 
 Tablas:
 
-- `groups` - Cada turno fijo es un grupo (`owner_id`, `name`).
-- `group_members` - Relacion usuario/grupo (`group_id`, `user_id`).
+- `groups` - Cada turno fijo es un grupo (`owner_id`, `name`, `public_code`, `code_created_at`).
+- `group_members` - Relacion usuario/grupo (`group_id`, `user_id`). Miembros plenos, maximo 3 por grupo.
+- `group_observers` - Usuarios con acceso de solo lectura al grupo (`group_id`, `user_id`). Ilimitados, agregados via codigo publico.
 - `user_profiles` - Perfil publico minimo para resolver usuarios por correo (`id`, `email`).
 - `players` - Jugadores del grupo (`group_id`, `name`, `level`, `mvp_count`, `mvp_votes_received`).
 - `match_days` - Partidos (`group_id`, `date`, `attendees[]`, `team_a[]`, `team_b[]`, `winner`, `mvp_player_ids[]`).
@@ -94,6 +97,10 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - Al cerrar la encuesta, la funcion RPC `close_mvp_poll` determina al ganador atomicamente, persiste en `match_days.mvp_player_ids`, e incrementa `players.mvp_count` para el ganador y `players.mvp_votes_received` para todos los candidatos que recibieron votos.
 - En caso de empate, todos los jugadores empatados quedan como MVP del partido.
 - Las RLS de `mvp_polls` y la RPC `close_mvp_poll` validan membresia via `group_members`, no `owner_id`. Mantener este patron en cualquier flujo de gestion de encuestas.
+- Cualquier miembro pleno puede generar/regenerar/revocar el codigo publico del grupo en `/grupos`. El codigo es alfanumerico de 8 caracteres (alfabeto `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, sin caracteres confusos) y es fijo hasta que se regenera o revoca manualmente.
+- Los observadores (role `observer`) acceden con el codigo desde `/grupos` o `GroupSetup`, quedan en `group_observers`, y son ilimitados (no cuentan contra el limite de 3 miembros plenos).
+- Los observadores solo ven `/dashboard` y `/grupos`. `RequireEditor` redirige a `/dashboard` desde rutas editables. La edicion esta bloqueada por RLS: las policies INSERT/UPDATE/DELETE de `players`, `match_days`, `mvp_polls` siguen validando `group_members`, no `group_observers`.
+- Las policies SELECT de `groups`, `players` y `match_days` permiten lectura tanto a miembros plenos (`group_members`) como a observadores (`group_observers`). Mantener este patron al agregar nuevas tablas del grupo.
 
 ## Variables de entorno
 
@@ -156,6 +163,7 @@ Si se quiere probar login en previews de Vercel, agregar tambien un patron de re
 - Para nuevas lecturas/escrituras de Supabase, preferir helpers en `src/lib/db.ts`.
 - No poner claves privadas ni service-role keys en el frontend.
 - Las paginas protegidas deben usar `ProtectedRoute`.
+- Las paginas editables (modifican datos del grupo) deben envolverse con `RequireEditor` para redirigir a `/dashboard` cuando el grupo activo es observado.
 - Las paginas dependientes de grupo deben usar `GroupSetup` y esperar `activeGroup`.
 - En `/sorteo`, `selected` sigue siendo la fuente de verdad de los asistentes del dia y de `match_days.attendees`.
 - En `/sorteo`, el alta rapida de jugadores debe conservar la seleccion actual del partido y sumar al nuevo jugador como presente.

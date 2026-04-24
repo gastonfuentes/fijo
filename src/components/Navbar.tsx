@@ -4,21 +4,25 @@
 
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGroupContext } from "@/contexts/GroupContext";
 import { usePathname } from "next/navigation";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { isReadOnly } = useGroupContext();
   const pathname = usePathname();
 
   if (!user) return null;
 
-  const links = [
-    { href: "/dashboard", label: "Inicio" },
-    { href: "/jugadores", label: "Jugadores" },
-    { href: "/sorteo", label: "Sorteo" },
-    { href: "/partidos", label: "Partidos" },
-    { href: "/grupos", label: "Grupos" },
+  const allLinks = [
+    { href: "/dashboard", label: "Inicio", editorOnly: false },
+    { href: "/jugadores", label: "Jugadores", editorOnly: true },
+    { href: "/sorteo", label: "Sorteo", editorOnly: true },
+    { href: "/partidos", label: "Partidos", editorOnly: true },
+    { href: "/grupos", label: "Grupos", editorOnly: false },
   ];
+
+  const links = allLinks.filter((link) => !isReadOnly || !link.editorOnly);
 
   return (
     <nav className="sticky top-0 z-20 px-3 pt-3">
