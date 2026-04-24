@@ -21,6 +21,8 @@ export default function MvpPollCard({ poll, results, playerName, onPollUpdated }
     try {
       await closeMvpPoll(poll.id);
       onPollUpdated();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo cerrar la encuesta");
     } finally {
       setLoading(false);
     }
@@ -32,6 +34,8 @@ export default function MvpPollCard({ poll, results, playerName, onPollUpdated }
     try {
       await deleteMvpPoll(poll.id);
       onPollUpdated();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo eliminar la encuesta");
     } finally {
       setLoading(false);
     }

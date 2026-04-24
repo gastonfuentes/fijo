@@ -666,10 +666,10 @@ begin
   update players p
      set mvp_votes_received = mvp_votes_received + v.c
     from (
-      select player_id, count(*)::int as c
-      from mvp_votes
-      where poll_id = close_mvp_poll.poll_id
-      group by player_id
+      select mv.player_id, count(*)::int as c
+      from mvp_votes mv
+      where mv.poll_id = close_mvp_poll.poll_id
+      group by mv.player_id
     ) v
    where p.id = v.player_id;
 
@@ -677,19 +677,19 @@ begin
   select coalesce(max(c), 0) into v_max
     from (
       select count(*)::int as c
-      from mvp_votes
-      where poll_id = close_mvp_poll.poll_id
-      group by player_id
+      from mvp_votes mv
+      where mv.poll_id = close_mvp_poll.poll_id
+      group by mv.player_id
     ) s;
 
   if v_max > 0 then
     -- Ganadores: todos los que tienen el maximo (puede haber empate)
     select array_agg(player_id) into v_winners
       from (
-        select player_id, count(*)::int as c
-        from mvp_votes
-        where poll_id = close_mvp_poll.poll_id
-        group by player_id
+        select mv.player_id, count(*)::int as c
+        from mvp_votes mv
+        where mv.poll_id = close_mvp_poll.poll_id
+        group by mv.player_id
       ) s
      where s.c = v_max;
 
