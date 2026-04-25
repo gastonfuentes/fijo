@@ -8,8 +8,9 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Rama activa: `feat/mvp-form-arrows` (flechas de forma estilo PES en `/dashboard`, `/jugadores` y `/sorteo`, calculadas a partir de los ultimos 4 polls MVP cerrados del grupo activo). Sin cambios de schema.
-- Feature anterior entregada: `feat/group-observers` (acceso de solo lectura via codigo publico; mergeada a `main`).
+- Rama activa: `feat/dashboard-last-match-mvp` (debajo de la tabla del dashboard se muestran dos cards: ultimo partido y ultima votacion MVP cerrada con desglose de votos). Sin cambios de schema.
+- Feature anterior entregada: `feat/mvp-form-arrows` (flechas de forma estilo PES; mergeada a `main`).
+- Flujo dashboard ultima actividad: en `/dashboard`, debajo de la tabla, dos cards en `lg:grid-cols-2` que **siempre** corresponden al mismo partido (`matchDays[0]`). Card izquierda muestra fecha, asistentes y los dos equipos como pills (componente local `TeamColumn` en el mismo archivo); el equipo ganador queda resaltado con borde y fondo, los jugadores que salieron MVP llevan corona 👑 inline. Card derecha llama a `getMvpPollResultsByMatchDay(matchDayId)` en `src/lib/db.ts` y maneja tres estados: sin votacion, votacion en curso (badge verde "Votación en curso" + barras parciales + link a `/votar/[pollId]`), o cerrada (ganador + barras finales via `<MvpResultBars />`, componente compartido en `src/components/MvpResultBars.tsx` reusado en `/votar`). La seccion solo aparece dentro del bloque `stats.length > 0`. Las RLS SELECT existentes ya cubren observadores.
 - Flujo flechas de forma: `getRecentMvpForm(groupId)` en `src/lib/db.ts` trae los ultimos 4 polls cerrados, suma votos por jugador y obtiene los MVPs del partido mas reciente. `computeMvpForm(playerId, formData)` en `src/lib/mvpForm.ts` decide el nivel: top 1 → ↑ azul, top 2 → ↗ verde, top 3 → → amarillo, top 4+ con votos → ↘ naranja, candidato sin votos → ↓ gris, jugador que nunca fue candidato en la ventana → sin flecha. Empates comparten posicion y saltan las siguientes. Si el jugador esta en `match_days.mvp_player_ids` del partido mas reciente, lleva ademas un badge 👑. Render via `<MvpFormArrow />` en `src/components/MvpFormArrow.tsx` (SVG inline rotado).
 - Flujo observadores: en `/grupos` cualquier miembro pleno genera un codigo alfanumerico de 8 caracteres (alfabeto sin 0/O/1/I) y lo comparte (boton WhatsApp incluido). Otro usuario logueado pega el codigo en `/grupos` o en `GroupSetup` → RPC `join_group_as_observer` lo suma a `group_observers` → el grupo aparece en su dropdown con badge "observador" → `isReadOnly` del `GroupContext` oculta edicion. `RequireEditor` redirige a `/dashboard` desde `/jugadores`, `/partidos`, `/partidos/nuevo` y `/sorteo`. Los observadores NO cuentan contra el limite de 3 miembros plenos.
 - Flujo carga manual: desde `/partidos` → boton "+ Cargar partido manual" → `/partidos/nuevo` → el usuario elige fecha (cualquier fecha pasada), asigna cada jugador al Equipo A, Equipo B o Ausente, y opcionalmente registra el ganador en el mismo formulario → llama a `createMatchDay` con los datos y redirige a `/partidos`. Sin cambios de schema ni nuevas funciones SQL.
@@ -43,6 +44,7 @@ src/
     RequireEditor.tsx     -> Redirige a /dashboard cuando el grupo activo es observado (solo lectura).
     GroupSetup.tsx
     MvpFormArrow.tsx      -> Flecha SVG estilo PES + badge MVP ultimo partido.
+    MvpResultBars.tsx     -> Barras horizontales de votos por candidato; usado en /votar y /dashboard.
   contexts/
     AuthContext.tsx       -> Supabase Auth.
     GroupContext.tsx      -> Grupo activo compartido entre paginas.

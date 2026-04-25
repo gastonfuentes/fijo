@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, use } from "react";
 import { getMvpPollResults, castMvpVote } from "@/lib/db";
 import { MvpPollResults } from "@/types";
+import MvpResultBars from "@/components/MvpResultBars";
 
 const FINGERPRINT_KEY = "mvp_fp";
 const VOTE_KEY_PREFIX = "mvp_vote_";
@@ -136,7 +137,7 @@ export default function VotarPage({ params }: { params: Promise<{ pollId: string
             ) : (
               <p className="mb-4 text-sm text-[var(--muted)]">Sin votos registrados.</p>
             )}
-            <ResultBars candidates={poll.candidates} totals={totals} totalVotes={totalVotes} />
+            <MvpResultBars candidates={poll.candidates} totals={totals} totalVotes={totalVotes} />
           </div>
         ) : hasVoted ? (
           <div className="surface p-6">
@@ -144,7 +145,7 @@ export default function VotarPage({ params }: { params: Promise<{ pollId: string
             <p className="mb-4 text-lg font-black text-fijo-900">
               {poll.candidates.find((c) => c.id === storedVote)?.name ?? "???"}
             </p>
-            <ResultBars candidates={poll.candidates} totals={totals} totalVotes={totalVotes} />
+            <MvpResultBars candidates={poll.candidates} totals={totals} totalVotes={totalVotes} />
             <p className="mt-3 text-xs text-[var(--muted)]">
               Los resultados se actualizan en vivo · {totalVotes} votos
             </p>
@@ -195,41 +196,3 @@ export default function VotarPage({ params }: { params: Promise<{ pollId: string
   );
 }
 
-function ResultBars({
-  candidates,
-  totals,
-  totalVotes,
-}: {
-  candidates: { id: string; name: string }[];
-  totals: Record<string, number>;
-  totalVotes: number;
-}) {
-  const max = totalVotes > 0 ? Math.max(...candidates.map((c) => totals[c.id] ?? 0)) : 0;
-
-  return (
-    <div className="space-y-3">
-      {candidates.map((c) => {
-        const count = totals[c.id] ?? 0;
-        const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-        const isWinner = count > 0 && count === max;
-        return (
-          <div key={c.id}>
-            <div className="mb-1 flex items-center justify-between text-xs font-bold">
-              <span className={isWinner ? "text-fijo-900" : "text-[var(--muted)]"}>
-                {isWinner && "🏆 "}
-                {c.name}
-              </span>
-              <span className="text-[var(--muted)]">{count} {count === 1 ? "voto" : "votos"}</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-fijo-100">
-              <div
-                className={`h-full rounded-full transition-all ${isWinner ? "bg-fijo-900" : "bg-fijo-400"}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}

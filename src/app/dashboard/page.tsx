@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { getPlayers, getMatchDays, getRecentMvpForm } from "@/lib/db";
-import { Player, MatchDay, PlayerStats, MvpFormData } from "@/types";
+import { getPlayers, getMatchDays, getRecentMvpForm, getMvpPollResultsByMatchDay } from "@/lib/db";
+import { Player, MatchDay, PlayerStats, MvpFormData, MvpPollResults } from "@/types";
 import { computeMvpForm } from "@/lib/mvpForm";
 import MvpFormArrow from "@/components/MvpFormArrow";
+import MvpResultBars from "@/components/MvpResultBars";
 import Link from "next/link";
 
 const EMPTY_FORM: MvpFormData = {
@@ -58,11 +59,73 @@ function getPlayerAttendanceRate(player: PlayerStats, totalMatches: number) {
   return Math.round((player.attendance / totalMatches) * 100);
 }
 
+function formatMatchDate(dateStr: string) {
+  const [y, m, d] = dateStr.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function TeamColumn({
+  label,
+  playerIds,
+  isWinner,
+  hasResult,
+  mvpIds,
+  playerNameById,
+}: {
+  label: string;
+  playerIds: string[];
+  isWinner: boolean;
+  hasResult: boolean;
+  mvpIds: string[];
+  playerNameById: (id: string) => string;
+}) {
+  const containerClass = isWinner
+    ? "rounded-lg border-2 border-fijo-400 bg-fijo-50/70 p-3"
+    : hasResult
+      ? "rounded-lg border border-fijo-100 bg-white p-3 opacity-80"
+      : "rounded-lg border border-fijo-100 bg-white p-3";
+
+  return (
+    <div className={containerClass}>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-bold text-[var(--muted)]">{label}</p>
+        {isWinner && (
+          <span className="text-xs font-black text-fijo-900">🏆 Ganador</span>
+        )}
+      </div>
+      {playerIds.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {playerIds.map((id) => {
+            const isMvp = mvpIds.includes(id);
+            return (
+              <span
+                key={id}
+                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold ${
+                  isMvp
+                    ? "border-fijo-300 bg-fijo-100 text-fijo-900"
+                    : "border-fijo-200 bg-white text-fijo-800"
+                }`}
+              >
+                {isMvp && <span className="mr-1">👑</span>}
+                {playerNameById(id)}
+              </span>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--muted)]">—</p>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { activeGroup, isReadOnly } = useGroupContext();
   const [stats, setStats] = useState<PlayerStats[]>([]);
   const [totalMatches, setTotalMatches] = useState(0);
   const [formData, setFormData] = useState<MvpFormData>(EMPTY_FORM);
+  const [lastMatch, setLastMatch] = useState<MatchDay | null>(null);
+  const [lastPoll, setLastPoll] = useState<MvpPollResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"wins" | "attendance" | "absences">("wins");
 
@@ -74,9 +137,13 @@ export default function DashboardPage() {
       getMatchDays(activeGroup.id),
       getRecentMvpForm(activeGroup.id),
     ]);
+    const last = matchDays[0] ?? null;
+    const pollResults = last ? await getMvpPollResultsByMatchDay(last.id) : null;
     setStats(computeStats(players, matchDays));
     setTotalMatches(matchDays.length);
     setFormData(mvpForm);
+    setLastMatch(last);
+    setLastPoll(pollResults);
     setLoading(false);
   }, [activeGroup]);
 
@@ -84,6 +151,9 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  const playerNameById = (id: string) =>
+    stats.find((s) => s.playerId === id)?.name ?? "???";
 
   const sorted = [...stats].sort((a, b) => {
     if (sortBy === "wins") return b.wins - a.wins;
@@ -284,6 +354,125 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+
+              <section className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="surface p-6">
+                  <p className="text-sm font-bold text-[var(--muted)]">Último partido</p>
+                  {lastMatch ? (
+                    <>
+                      <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="text-2xl font-black text-fijo-900">
+                          {formatMatchDate(lastMatch.date)}
+                        </p>
+                        <span className="text-xs font-bold text-[var(--muted)]">
+                          {lastMatch.attendees.length} jugadores
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-stretch">
+                        <TeamColumn
+                          label="Equipo A"
+                          playerIds={lastMatch.teamA}
+                          isWinner={lastMatch.winner === "A"}
+                          hasResult={!!lastMatch.winner}
+                          mvpIds={lastMatch.mvpPlayerIds}
+                          playerNameById={playerNameById}
+                        />
+                        <div className="hidden items-center justify-center sm:flex">
+                          <span className="font-mono text-xs font-black text-[var(--muted)]">
+                            VS
+                          </span>
+                        </div>
+                        <TeamColumn
+                          label="Equipo B"
+                          playerIds={lastMatch.teamB}
+                          isWinner={lastMatch.winner === "B"}
+                          hasResult={!!lastMatch.winner}
+                          mvpIds={lastMatch.mvpPlayerIds}
+                          playerNameById={playerNameById}
+                        />
+                      </div>
+                      {!lastMatch.winner && (
+                        <p className="mt-4 text-xs font-bold text-[var(--muted)]">
+                          Sin resultado cargado todavía.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="muted-copy mt-3 text-sm">Todavía no hay partidos cargados.</p>
+                  )}
+                </div>
+
+                <div className="surface p-6">
+                  <p className="text-sm font-bold text-[var(--muted)]">Votación MVP del último partido</p>
+                  {!lastMatch ? (
+                    <p className="muted-copy mt-3 text-sm">Todavía no hay partidos cargados.</p>
+                  ) : !lastPoll ? (
+                    <p className="muted-copy mt-3 text-sm">
+                      Este partido todavía no tiene votación MVP.
+                    </p>
+                  ) : lastPoll.poll.status === "open" ? (
+                    <>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <p className="text-2xl font-black text-fijo-900">
+                          {formatMatchDate(lastPoll.poll.matchDate)}
+                        </p>
+                        <span className="level-pill border border-green-200 bg-green-50 font-black text-green-800">
+                          Votación en curso
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-bold text-fijo-900">
+                        {lastPoll.totalVotes} {lastPoll.totalVotes === 1 ? "voto" : "votos"} hasta ahora
+                      </p>
+                      <div className="mt-3">
+                        <MvpResultBars
+                          candidates={lastPoll.poll.candidates}
+                          totals={lastPoll.totals}
+                          totalVotes={lastPoll.totalVotes}
+                        />
+                      </div>
+                      <Link
+                        href={`/votar/${lastPoll.poll.id}`}
+                        className="mt-4 inline-flex items-center gap-1 text-sm font-black text-fijo-800 underline-offset-2 hover:underline"
+                      >
+                        Ir a la votación →
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-2 text-2xl font-black text-fijo-900">
+                        {formatMatchDate(lastPoll.poll.matchDate)}
+                      </p>
+                      {lastPoll.winners.length > 0 ? (
+                        <>
+                          <p className="mt-3 text-sm font-bold text-fijo-900">
+                            {lastPoll.winners.length === 1 ? "MVP del partido" : "MVP compartido"}
+                          </p>
+                          <div className="mt-2 mb-4 flex flex-wrap gap-2">
+                            {lastPoll.winners.map((id) => {
+                              const c = lastPoll.poll.candidates.find((x) => x.id === id);
+                              return (
+                                <span key={id} className="level-pill border border-fijo-300 bg-fijo-100 font-black text-fijo-900">
+                                  🏆 {c?.name ?? playerNameById(id)}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <MvpResultBars
+                            candidates={lastPoll.poll.candidates}
+                            totals={lastPoll.totals}
+                            totalVotes={lastPoll.totalVotes}
+                          />
+                          <p className="mt-3 text-xs text-[var(--muted)]">
+                            {lastPoll.totalVotes} votos en total
+                          </p>
+                        </>
+                      ) : (
+                        <p className="muted-copy mt-3 text-sm">Encuesta cerrada sin votos.</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </section>
             </>
           )}
         </div>
