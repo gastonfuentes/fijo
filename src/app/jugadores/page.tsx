@@ -5,12 +5,22 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { getPlayers, addPlayer, updatePlayer, deletePlayer } from "@/lib/db";
-import { Player } from "@/types";
+import { getPlayers, addPlayer, updatePlayer, deletePlayer, getRecentMvpForm } from "@/lib/db";
+import { Player, MvpFormData } from "@/types";
+import { computeMvpForm } from "@/lib/mvpForm";
+import MvpFormArrow from "@/components/MvpFormArrow";
+
+const EMPTY_FORM: MvpFormData = {
+  totals: {},
+  candidatePlayerIds: [],
+  lastMatchMvpIds: [],
+  pollsCount: 0,
+};
 
 export default function JugadoresPage() {
   const { activeGroup } = useGroupContext();
   const [players, setPlayers] = useState<Player[]>([]);
+  const [formData, setFormData] = useState<MvpFormData>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -19,8 +29,12 @@ export default function JugadoresPage() {
   const load = useCallback(async () => {
     if (!activeGroup) return;
     setLoading(true);
-    const p = await getPlayers(activeGroup.id);
+    const [p, mvpForm] = await Promise.all([
+      getPlayers(activeGroup.id),
+      getRecentMvpForm(activeGroup.id),
+    ]);
     setPlayers(p);
+    setFormData(mvpForm);
     setLoading(false);
   }, [activeGroup]);
 
@@ -137,6 +151,7 @@ export default function JugadoresPage() {
                   ) : (
                     <>
                       <div className="flex flex-wrap items-center gap-3">
+                        <MvpFormArrow {...computeMvpForm(p.id, formData)} size="sm" />
                         <span className="font-bold text-fijo-900">{p.name}</span>
                       </div>
                       <div className="flex items-center gap-2">

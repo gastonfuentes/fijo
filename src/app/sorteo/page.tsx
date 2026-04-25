@@ -5,9 +5,18 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { addPlayer, getPlayers, createMatchDay } from "@/lib/db";
+import { addPlayer, getPlayers, createMatchDay, getRecentMvpForm } from "@/lib/db";
 import { sorteoBalanceado } from "@/lib/sorteo";
-import { Player } from "@/types";
+import { Player, MvpFormData } from "@/types";
+import { computeMvpForm } from "@/lib/mvpForm";
+import MvpFormArrow from "@/components/MvpFormArrow";
+
+const EMPTY_FORM: MvpFormData = {
+  totals: {},
+  candidatePlayerIds: [],
+  lastMatchMvpIds: [],
+  pollsCount: 0,
+};
 
 function buildSorteoShareText(teamA: Player[], teamB: Player[]) {
   const formatTeam = (label: string, team: Player[]) =>
@@ -80,6 +89,7 @@ function TeamCard({
 export default function SorteoPage() {
   const { activeGroup } = useGroupContext();
   const [players, setPlayers] = useState<Player[]>([]);
+  const [formData, setFormData] = useState<MvpFormData>(EMPTY_FORM);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bestPlayers, setBestPlayers] = useState<Set<string>>(new Set());
   const [teamA, setTeamA] = useState<Player[]>([]);
@@ -96,8 +106,12 @@ export default function SorteoPage() {
   const load = useCallback(async () => {
     if (!activeGroup) return;
     setLoading(true);
-    const p = await getPlayers(activeGroup.id);
+    const [p, mvpForm] = await Promise.all([
+      getPlayers(activeGroup.id),
+      getRecentMvpForm(activeGroup.id),
+    ]);
     setPlayers(p);
+    setFormData(mvpForm);
     setSelected(new Set());
     setBestPlayers(new Set());
     setTeamA([]);
@@ -380,6 +394,7 @@ export default function SorteoPage() {
                               onChange={() => togglePlayer(p.id)}
                               className="h-4 w-4 accent-fijo-700"
                             />
+                            <MvpFormArrow {...computeMvpForm(p.id, formData)} size="sm" />
                             <span className={isSelected ? "" : "line-through"}>{p.name}</span>
                           </label>
                           <label

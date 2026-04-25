@@ -78,3 +78,12 @@ export interface PlayerStats {
   attendance: number;
   absences: number;
 }
+
+export type MvpFormLevel = "excellent" | "good" | "normal" | "poor" | "bad";
+
+export interface MvpFormData {
+  totals: Record<string, number>;
+  candidatePlayerIds: string[];
+  lastMatchMvpIds: string[];
+  pollsCount: number;
+}

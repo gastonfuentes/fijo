@@ -8,8 +8,9 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Rama activa: `feat/group-observers` (acceso de solo lectura a grupos via codigo publico; agrega tabla `group_observers`, columnas `public_code` + `code_created_at` en `groups`, y RPCs `generate_group_public_code`, `revoke_group_public_code`, `join_group_as_observer`, `leave_group_observer`, `get_group_observers`, `remove_group_observer`).
-- Feature anterior entregada: `feat/manual-match` (carga manual de partidos con fecha arbitraria; mergeada a `main`).
+- Rama activa: `feat/mvp-form-arrows` (flechas de forma estilo PES en `/dashboard`, `/jugadores` y `/sorteo`, calculadas a partir de los ultimos 4 polls MVP cerrados del grupo activo). Sin cambios de schema.
+- Feature anterior entregada: `feat/group-observers` (acceso de solo lectura via codigo publico; mergeada a `main`).
+- Flujo flechas de forma: `getRecentMvpForm(groupId)` en `src/lib/db.ts` trae los ultimos 4 polls cerrados, suma votos por jugador y obtiene los MVPs del partido mas reciente. `computeMvpForm(playerId, formData)` en `src/lib/mvpForm.ts` decide el nivel: top 1 → ↑ azul, top 2 → ↗ verde, top 3 → → amarillo, top 4+ con votos → ↘ naranja, candidato sin votos → ↓ gris, jugador que nunca fue candidato en la ventana → sin flecha. Empates comparten posicion y saltan las siguientes. Si el jugador esta en `match_days.mvp_player_ids` del partido mas reciente, lleva ademas un badge 👑. Render via `<MvpFormArrow />` en `src/components/MvpFormArrow.tsx` (SVG inline rotado).
 - Flujo observadores: en `/grupos` cualquier miembro pleno genera un codigo alfanumerico de 8 caracteres (alfabeto sin 0/O/1/I) y lo comparte (boton WhatsApp incluido). Otro usuario logueado pega el codigo en `/grupos` o en `GroupSetup` → RPC `join_group_as_observer` lo suma a `group_observers` → el grupo aparece en su dropdown con badge "observador" → `isReadOnly` del `GroupContext` oculta edicion. `RequireEditor` redirige a `/dashboard` desde `/jugadores`, `/partidos`, `/partidos/nuevo` y `/sorteo`. Los observadores NO cuentan contra el limite de 3 miembros plenos.
 - Flujo carga manual: desde `/partidos` → boton "+ Cargar partido manual" → `/partidos/nuevo` → el usuario elige fecha (cualquier fecha pasada), asigna cada jugador al Equipo A, Equipo B o Ausente, y opcionalmente registra el ganador en el mismo formulario → llama a `createMatchDay` con los datos y redirige a `/partidos`. Sin cambios de schema ni nuevas funciones SQL.
 - Flujo MVP actual: al cerrar un partido, **cualquier miembro** del grupo elige 3-4 candidatos → se genera link publico `/votar/[pollId]` → se comparte por WhatsApp → cada votante usa el link sin login (1 voto por fingerprint de dispositivo) → un miembro cierra la encuesta → el MVP se persiste en `match_days.mvp_player_ids` y se incrementan `players.mvp_count` y `players.mvp_votes_received` (todo atomico via RPC `close_mvp_poll`).
@@ -41,6 +42,7 @@ src/
     ProtectedRoute.tsx
     RequireEditor.tsx     -> Redirige a /dashboard cuando el grupo activo es observado (solo lectura).
     GroupSetup.tsx
+    MvpFormArrow.tsx      -> Flecha SVG estilo PES + badge MVP ultimo partido.
   contexts/
     AuthContext.tsx       -> Supabase Auth.
     GroupContext.tsx      -> Grupo activo compartido entre paginas.
@@ -50,7 +52,8 @@ src/
     supabase.ts           -> createClient() browser.
     db.ts                 -> Operaciones de BD.
     sorteo.ts             -> Algoritmo de sorteo balanceado por nivel.
-  types/index.ts          -> Player, MatchDay, Group, PlayerStats.
+    mvpForm.ts            -> Logica pura para decidir nivel de forma de cada jugador.
+  types/index.ts          -> Player, MatchDay, Group, PlayerStats, MvpFormData.
 ```
 
 ## Base de datos (Supabase)
@@ -101,6 +104,7 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - Los observadores (role `observer`) acceden con el codigo desde `/grupos` o `GroupSetup`, quedan en `group_observers`, y son ilimitados (no cuentan contra el limite de 3 miembros plenos).
 - Los observadores solo ven `/dashboard` y `/grupos`. `RequireEditor` redirige a `/dashboard` desde rutas editables. La edicion esta bloqueada por RLS: las policies INSERT/UPDATE/DELETE de `players`, `match_days`, `mvp_polls` siguen validando `group_members`, no `group_observers`.
 - Las policies SELECT de `groups`, `players` y `match_days` permiten lectura tanto a miembros plenos (`group_members`) como a observadores (`group_observers`). Mantener este patron al agregar nuevas tablas del grupo.
+- Las flechas de forma se muestran en `/dashboard`, `/jugadores` y `/sorteo`. Se calculan client-side a partir de los ultimos 4 polls MVP cerrados del grupo activo. Si hay menos polls, se usa lo que haya. Si no hay ningun poll cerrado pero si un MVP en el ultimo partido, igualmente se muestra el badge 👑 (sin flecha). El render funciona tanto para miembros como observadores porque las RLS SELECT de `mvp_polls`, `mvp_votes` y `match_days` ya cubren ambos roles.
 
 ## Variables de entorno
 
