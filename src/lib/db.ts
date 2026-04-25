@@ -563,3 +563,17 @@ export async function castMvpVote(
   }
   return { alreadyVoted: false };
 }
+
+export async function getMvpPollResultsByMatchDay(
+  matchDayId: string
+): Promise<MvpPollResults | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("mvp_polls")
+    .select("id")
+    .eq("match_day_id", matchDayId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return getMvpPollResults(data.id as string);
+}
