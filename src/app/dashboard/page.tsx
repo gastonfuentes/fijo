@@ -4,9 +4,18 @@ import { useState, useEffect, useCallback } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { getPlayers, getMatchDays } from "@/lib/db";
-import { Player, MatchDay, PlayerStats } from "@/types";
+import { getPlayers, getMatchDays, getRecentMvpForm } from "@/lib/db";
+import { Player, MatchDay, PlayerStats, MvpFormData } from "@/types";
+import { computeMvpForm } from "@/lib/mvpForm";
+import MvpFormArrow from "@/components/MvpFormArrow";
 import Link from "next/link";
+
+const EMPTY_FORM: MvpFormData = {
+  totals: {},
+  candidatePlayerIds: [],
+  lastMatchMvpIds: [],
+  pollsCount: 0,
+};
 
 function computeStats(players: Player[], matchDays: MatchDay[]): PlayerStats[] {
   const totalMatchDays = matchDays.length;
@@ -53,18 +62,21 @@ export default function DashboardPage() {
   const { activeGroup, isReadOnly } = useGroupContext();
   const [stats, setStats] = useState<PlayerStats[]>([]);
   const [totalMatches, setTotalMatches] = useState(0);
+  const [formData, setFormData] = useState<MvpFormData>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"wins" | "attendance" | "absences">("wins");
 
   const load = useCallback(async () => {
     if (!activeGroup) return;
     setLoading(true);
-    const [players, matchDays] = await Promise.all([
+    const [players, matchDays, mvpForm] = await Promise.all([
       getPlayers(activeGroup.id),
       getMatchDays(activeGroup.id),
+      getRecentMvpForm(activeGroup.id),
     ]);
     setStats(computeStats(players, matchDays));
     setTotalMatches(matchDays.length);
+    setFormData(mvpForm);
     setLoading(false);
   }, [activeGroup]);
 
@@ -226,6 +238,7 @@ export default function DashboardPage() {
                   <thead>
                     <tr className="border-b border-fijo-100 bg-fijo-50/70 text-[var(--muted)]">
                       <th className="px-4 py-3 text-left font-bold">#</th>
+                      <th className="px-2 py-3 text-center font-bold">Forma</th>
                       <th className="px-4 py-3 text-left font-bold">Jugador</th>
                       <th className="px-4 py-3 text-center font-bold">% Asist.</th>
                       <th className="px-4 py-3 text-center font-bold">PJ</th>
@@ -243,6 +256,9 @@ export default function DashboardPage() {
                       >
                         <td className="px-4 py-3 font-mono text-[var(--muted)]">
                           {i + 1}
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <MvpFormArrow {...computeMvpForm(s.playerId, formData)} size="sm" />
                         </td>
                         <td className="px-4 py-3 font-bold text-fijo-900">{s.name}</td>
                         <td className="px-4 py-3 text-center font-mono font-black text-fijo-800">

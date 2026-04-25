@@ -1,5 +1,5 @@
 import { createClient } from "./supabase";
-import { Player, MatchDay, Group, GroupMember, GroupObserver, SkillLevel, MvpPoll, MvpPollResults, MvpPollCandidate } from "@/types";
+import { Player, MatchDay, Group, GroupMember, GroupObserver, SkillLevel, MvpPoll, MvpPollResults, MvpPollCandidate, MvpFormData } from "@/types";
 
 type UserGroupRow = {
   groups: UserGroupRelation | UserGroupRelation[] | null;
@@ -474,6 +474,64 @@ export async function getMvpPollResults(pollId: string): Promise<MvpPollResults 
   const winners = maxVotes > 0 ? Object.keys(totals).filter((id) => totals[id] === maxVotes) : [];
 
   return { poll, totals, totalVotes, winners };
+}
+
+export async function getRecentMvpForm(
+  groupId: string,
+  windowSize = 4
+): Promise<MvpFormData> {
+  const supabase = createClient();
+
+  const [pollsRes, lastMvpMatchRes] = await Promise.all([
+    supabase
+      .from("mvp_polls")
+      .select("id, candidates")
+      .eq("group_id", groupId)
+      .eq("status", "closed")
+      .order("closed_at", { ascending: false })
+      .limit(windowSize),
+    supabase
+      .from("match_days")
+      .select("mvp_player_ids")
+      .eq("group_id", groupId)
+      .not("mvp_player_ids", "is", null)
+      .order("date", { ascending: false })
+      .limit(1),
+  ]);
+
+  const lastMvpRow = lastMvpMatchRes.data?.[0] as { mvp_player_ids: string[] | null } | undefined;
+  const lastMatchMvpIds = (lastMvpRow?.mvp_player_ids ?? []).filter((id): id is string => typeof id === "string");
+
+  const polls = (pollsRes.data ?? []) as Array<{ id: string; candidates: MvpPollCandidate[] | null }>;
+  if (polls.length === 0) {
+    return { totals: {}, candidatePlayerIds: [], lastMatchMvpIds, pollsCount: 0 };
+  }
+
+  const pollIds = polls.map((p) => p.id);
+  const candidateIdSet = new Set<string>();
+  for (const poll of polls) {
+    for (const c of poll.candidates ?? []) {
+      if (c?.id) candidateIdSet.add(c.id);
+    }
+  }
+
+  const votesRes = await supabase
+    .from("mvp_votes")
+    .select("player_id")
+    .in("poll_id", pollIds);
+
+  const totals: Record<string, number> = {};
+  for (const v of votesRes.data ?? []) {
+    const pid = (v as { player_id: string }).player_id;
+    totals[pid] = (totals[pid] ?? 0) + 1;
+  }
+
+  return {
+    totals,
+    candidatePlayerIds: Array.from(candidateIdSet),
+    lastMatchMvpIds,
+    pollsCount: polls.length,
+  };
 }
 
 export async function closeMvpPoll(pollId: string): Promise<string[]> {
