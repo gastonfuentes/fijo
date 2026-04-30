@@ -8,8 +8,9 @@ Mantenimiento: cada vez que se agregue una funcionalidad relevante, cambie un fl
 
 ## Checkpoint actual
 
-- Rama activa: `feat/dashboard-last-match-mvp` (debajo de la tabla del dashboard se muestran dos cards: ultimo partido y ultima votacion MVP cerrada con desglose de votos). Sin cambios de schema.
-- Feature anterior entregada: `feat/mvp-form-arrows` (flechas de forma estilo PES; mergeada a `main`).
+- Rama activa: `feat/sorteo-enfrentamientos` (modo opcional drag-and-drop en `/sorteo` para emparejar manualmente jugadores antes del sorteo: cada par queda garantizado en equipos distintos). Sin cambios de schema.
+- Feature anterior entregada: `feat/dashboard-last-match-mvp` (cards de ultimo partido y MVP en `/dashboard`; mergeada a `main`).
+- Flujo enfrentamientos manuales: en `/sorteo`, despues de marcar presentes (>= 4), boton "Enfrentar manualmente" cambia a un `<PairingBoard>` con DnD basado en `@dnd-kit/core`. Layout de tres columnas (`md:grid-cols-3`): "Lado A" a la izquierda, lista central de jugadores sin emparejar, "Lado B" a la derecha. Cada par se renderiza como una fila alineada entre las columnas laterales con un badge numerico (1, 2, 3...) que conecta los dos lados; el ✕ para eliminar un par vive en la columna derecha. El usuario arrastra jugadores entre la columna central y los slots `left`/`right` de los pares. Cuando arrastra una card, las cards y slots vacios del mismo nivel efectivo (`bestPlayers` -> `bueno`, resto -> nivel guardado) se resaltan como sugerencia visual no bloqueante. El estado vive en memoria y NO se persiste; el board reporta los pares completos al padre via `onPairsChange`. `sorteoBalanceado(players, pairs?)` en `src/lib/sorteo.ts` recibe ahora un segundo argumento opcional `Array<[string, string]>`: para cada par decide la asignacion que minimiza el desbalance global de pesos por nivel (`bueno=3, tranqui=2, malo=1`) y aleatoriza en empate. Los no emparejados caen al algoritmo clasico (agrupar por nivel + alternar al equipo con menos jugadores). Si no se pasan pares o estan vacios, el comportamiento es identico al anterior. Guardar partido sigue persistiendo solo `team_a`/`team_b` finales.
 - Flujo dashboard ultima actividad: en `/dashboard`, debajo de la tabla, dos cards en `lg:grid-cols-2` que **siempre** corresponden al mismo partido (`matchDays[0]`). Card izquierda muestra fecha, asistentes y los dos equipos como pills (componente local `TeamColumn` en el mismo archivo); el equipo ganador queda resaltado con borde y fondo, los jugadores que salieron MVP llevan corona 👑 inline. Card derecha llama a `getMvpPollResultsByMatchDay(matchDayId)` en `src/lib/db.ts` y maneja tres estados: sin votacion, votacion en curso (badge verde "Votación en curso" + barras parciales + link a `/votar/[pollId]`), o cerrada (ganador + barras finales via `<MvpResultBars />`, componente compartido en `src/components/MvpResultBars.tsx` reusado en `/votar`). La seccion solo aparece dentro del bloque `stats.length > 0`. Las RLS SELECT existentes ya cubren observadores.
 - Flujo flechas de forma: `getRecentMvpForm(groupId)` en `src/lib/db.ts` trae los ultimos 4 polls cerrados, suma votos por jugador y obtiene los MVPs del partido mas reciente. `computeMvpForm(playerId, formData)` en `src/lib/mvpForm.ts` decide el nivel: top 1 → ↑ azul, top 2 → ↗ verde, top 3 → → amarillo, top 4+ con votos → ↘ naranja, candidato sin votos → ↓ gris, jugador que nunca fue candidato en la ventana → sin flecha. Empates comparten posicion y saltan las siguientes. Si el jugador esta en `match_days.mvp_player_ids` del partido mas reciente, lleva ademas un badge 👑. Render via `<MvpFormArrow />` en `src/components/MvpFormArrow.tsx` (SVG inline rotado).
 - Flujo observadores: en `/grupos` cualquier miembro pleno genera un codigo alfanumerico de 8 caracteres (alfabeto sin 0/O/1/I) y lo comparte (boton WhatsApp incluido). Otro usuario logueado pega el codigo en `/grupos` o en `GroupSetup` → RPC `join_group_as_observer` lo suma a `group_observers` → el grupo aparece en su dropdown con badge "observador" → `isReadOnly` del `GroupContext` oculta edicion. `RequireEditor` redirige a `/dashboard` desde `/jugadores`, `/partidos`, `/partidos/nuevo` y `/sorteo`. Los observadores NO cuentan contra el limite de 3 miembros plenos.
@@ -34,7 +35,7 @@ src/
     dashboard/            -> Estadisticas de jugadores.
     grupos/               -> Lista, roles, membresias por correo, edicion y eliminacion de grupos.
     jugadores/            -> CRUD de jugadores.
-    sorteo/               -> Seleccion de presentes, marca rapida de mejores, sorteo balanceado y compartir por WhatsApp.
+    sorteo/               -> Seleccion de presentes, marca rapida de mejores, sorteo balanceado (con modo opcional de enfrentamientos manuales DnD) y compartir por WhatsApp.
     partidos/             -> Historial, resultados y eliminacion de partidos.
     partidos/nuevo/       -> Carga manual de un partido con fecha arbitraria y asignacion A/B por jugador.
     votar/[pollId]/       -> Pagina publica de votacion MVP (sin login requerido).
@@ -45,6 +46,8 @@ src/
     GroupSetup.tsx
     MvpFormArrow.tsx      -> Flecha SVG estilo PES + badge MVP ultimo partido.
     MvpResultBars.tsx     -> Barras horizontales de votos por candidato; usado en /votar y /dashboard.
+    PairingBoard.tsx      -> Modo DnD opcional en /sorteo para enfrentar jugadores manualmente antes del sorteo.
+    DraggablePlayerCard.tsx -> Card arrastrable de jugador (nombre + badge nivel + flecha de forma) usada por PairingBoard.
   contexts/
     AuthContext.tsx       -> Supabase Auth.
     GroupContext.tsx      -> Grupo activo compartido entre paginas.
@@ -107,6 +110,7 @@ Creacion de grupos: `src/lib/db.ts` usa el usuario autenticado del cliente Supab
 - Los observadores solo ven `/dashboard` y `/grupos`. `RequireEditor` redirige a `/dashboard` desde rutas editables. La edicion esta bloqueada por RLS: las policies INSERT/UPDATE/DELETE de `players`, `match_days`, `mvp_polls` siguen validando `group_members`, no `group_observers`.
 - Las policies SELECT de `groups`, `players` y `match_days` permiten lectura tanto a miembros plenos (`group_members`) como a observadores (`group_observers`). Mantener este patron al agregar nuevas tablas del grupo.
 - Las flechas de forma se muestran en `/dashboard`, `/jugadores` y `/sorteo`. Se calculan client-side a partir de los ultimos 4 polls MVP cerrados del grupo activo. Si hay menos polls, se usa lo que haya. Si no hay ningun poll cerrado pero si un MVP en el ultimo partido, igualmente se muestra el badge 👑 (sin flecha). El render funciona tanto para miembros como observadores porque las RLS SELECT de `mvp_polls`, `mvp_votes` y `match_days` ya cubren ambos roles.
+- En `/sorteo` hay un modo opcional de "enfrentamientos manuales" (boton "Enfrentar manualmente", habilitado a partir de 4 presentes). Es DnD basado en `@dnd-kit/core`. Los pares se mantienen en memoria y se descartan al salir del modo, al deseleccionar un jugador presente o al volver al modo simple — nunca se persisten en la base. Cuando se sortea desde el modo emparejamiento, `sorteoBalanceado` recibe `pairs` como segundo arg; cada par queda garantizado en equipos distintos. La validacion de "mismo nivel" es solo una sugerencia visual: la UI resalta cards/slots del mismo nivel pero permite cualquier combinacion.
 
 ## Variables de entorno
 
@@ -128,7 +132,6 @@ npm run lint   # lint
 ## Git y publicacion
 
 - `main` es la rama de produccion.
-- `codex` es la rama de trabajo para cambios hechos por agentes y previews.
 - Cada nueva feature debe arrancar en una rama nueva creada desde la `main` local actualizada.
 - Si el usuario pide subir cambios a GitHub, hacer commit/push solamente. No abrir PR automaticamente; el usuario crea los PRs.
 - No commitear `.codex/` ni `.mcp.json` salvo pedido explicito.
@@ -174,6 +177,8 @@ Si se quiere probar login en previews de Vercel, agregar tambien un patron de re
 - En `/sorteo`, `selected` sigue siendo la fuente de verdad de los asistentes del dia y de `match_days.attendees`.
 - En `/sorteo`, el alta rapida de jugadores debe conservar la seleccion actual del partido y sumar al nuevo jugador como presente.
 - En `/sorteo`, compartir por WhatsApp o copiar el mensaje debe usar exactamente los equipos sorteados en pantalla y no guardar datos extra.
+- En `/sorteo`, los pares manuales son estado en memoria — no agregar persistencia en `match_days` ni en una tabla nueva. Si un jugador deja de estar presente, su par debe limpiarse automaticamente. La regla de "mismo nivel" es solo sugerencia visual; no la hagas bloqueante.
+- Mantener `sorteoBalanceado(players, pairs?)` como funcion pura: si `pairs` es undefined o vacio, comportarse exactamente como el algoritmo clasico. No reemplazar el algoritmo clasico con uno greedy global.
 - El alta de miembros por correo depende de funciones SQL en `supabase-schema.sql`; no reemplazar esto por lógica con service-role en frontend.
 - El limite de 3 miembros debe mantenerse garantizado en la base, no solo en UI o helpers TS.
 - Cuando cambie un flujo importante o una decision tecnica relevante, actualizar `CLAUDE.md` y `AGENTS.md` en la misma tanda de trabajo.

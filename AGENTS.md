@@ -10,8 +10,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Current Checkpoint
 
-- Active feature branch: `feat/dashboard-last-match-mvp` — below the player stats table in `/dashboard`, two cards (`lg:grid-cols-2`) that **always reference the same match** (`matchDays[0]`). Left card shows date, attendees, and both rosters as pill badges (local `TeamColumn`): the winning team is visually highlighted (border + tint), MVP players carry a 👑 inline. Right card calls `getMvpPollResultsByMatchDay(matchDayId)` and handles three states: no poll, open poll ("Votación en curso" badge + partial bars + link to `/votar/[pollId]`), or closed poll (winner badges + final `MvpResultBars`). Data sources: `getMatchDays(groupId)` for the match, `getMvpPollResultsByMatchDay(matchDayId)` (new helper) for the poll. The previous inline `ResultBars` from `/votar/[pollId]/page.tsx` was extracted to `src/components/MvpResultBars.tsx` and is now used by both routes. No schema changes.
-- Previous shipped feature: `feat/mvp-form-arrows` — PES-style form arrows; merged to `main`.
+- Active feature branch: `feat/sorteo-enfrentamientos` — optional drag-and-drop mode in `/sorteo` to manually pair up players before the draw. After marking attendees (>= 4), a "Enfrentar manualmente" button switches to a `<PairingBoard>` (`@dnd-kit/core`). The board is a three-column layout (`md:grid-cols-3`): "Lado A" panel on the left, an unpaired player pool in the center, "Lado B" panel on the right. Each pair renders as a row aligned across the two side panels with a numeric badge (1, 2, 3...) tying both sides together; the ✕ delete-pair button lives on the right column. Users drag cards between the center pool and the `left`/`right` slots of each pair. While dragging, cards/slots with the same effective level (`bestPlayers` → `bueno`, otherwise the stored level) are visually highlighted as a non-blocking hint. Pairs live in memory only — not persisted. The board reports completed pairs to the parent via `onPairsChange`. When the user runs the draw from this mode, `sorteoBalanceado(players, pairs?)` in `src/lib/sorteo.ts` distributes each pair into opposite teams choosing the assignment that minimizes the global level-weight imbalance (`bueno=3, tranqui=2, malo=1`), random tie-break. Unpaired players fall through the classic algorithm (group by level + alternate to the smaller team). With no pairs (or omitted argument) behavior is exactly the previous one. Saving still persists only `team_a`/`team_b` finals.
+- Previous shipped feature: `feat/dashboard-last-match-mvp` — last-match + MVP cards under the dashboard table; merged to `main`.
 - Schema state: `supabase-schema.sql` is idempotent. New in this branch: columns `public_code` and `code_created_at` on `groups`, new table `group_observers`, and RPCs `generate_group_public_code`, `revoke_group_public_code`, `join_group_as_observer`, `leave_group_observer`, `get_group_observers`, `remove_group_observer`. SELECT policies on `groups`, `players` and `match_days` now permit both full members (`group_members`) and observers (`group_observers`). INSERT/UPDATE/DELETE policies still require `group_members` only — observers cannot edit. `mvp_polls` RLS policies check `group_members` membership; the `close_mvp_poll` RPC validates membership via `group_members` and returns `'Solo los miembros del grupo pueden cerrar la encuesta'` when the caller is not a member.
 
 The product flow is:
@@ -39,6 +39,7 @@ Current `/sorteo` behavior:
 - "Best player" quick marks only apply to players currently marked as present.
 - `match_days.attendees` stores only the players selected for that day.
 - Once teams are sorted, the user can share the result through WhatsApp or copy the same message manually.
+- A "Enfrentar manualmente" button (enabled with >= 4 attendees) toggles a DnD pairing mode. The user assembles pairs (player ↔ player); each pair is guaranteed to land on opposite teams. The "same level" rule is a non-blocking visual hint, not a hard validation. Pairs are not persisted: leaving the pairing mode, deselecting an attendee that was paired, or pressing "Vaciar pares" clears them. From this mode the draw still produces standard `teamA`/`teamB` arrays.
 
 Current `/grupos` behavior:
 
@@ -86,7 +87,7 @@ src/
     dashboard/            Group stats and ranking.
     grupos/               List, rename, delete, and manage shared members.
     jugadores/            Player CRUD.
-    sorteo/               Attendee selection, quick best-player checks, and balanced team draw.
+    sorteo/               Attendee selection, quick best-player checks, balanced team draw, and optional DnD pairing mode for manual matchups.
     partidos/             Saved match days, winners, deletion, and MVP poll management.
     partidos/nuevo/       Manual match entry: arbitrary date, per-player A/B assignment, optional winner.
     votar/[pollId]/       Public MVP voting page (no login required).
@@ -95,6 +96,8 @@ src/
     ProtectedRoute.tsx
     RequireEditor.tsx     Redirects to /dashboard when the active group is observed (read-only).
     GroupSetup.tsx
+    PairingBoard.tsx      Optional DnD board for manual matchups in /sorteo (uses @dnd-kit/core).
+    DraggablePlayerCard.tsx Player card used inside the pairing board (name + level badge + form arrow).
   contexts/
     AuthContext.tsx       Supabase Auth session state.
     GroupContext.tsx      Active group state.
@@ -116,6 +119,8 @@ src/
 - `PlayerStats`: dashboard-only derived stats, computed from players and match days.
 
 The balanced draw lives in `src/lib/sorteo.ts`. It groups players by level, shuffles each level, then alternates players into the smaller team so skill levels are spread across both teams. The current UI does not ask for a level when adding a player; new players are stored as `tranqui`, and `/sorteo` temporarily marks checked best players as `bueno` before calling the draw. On `/sorteo`, presence is a temporary per-match selection: players start as absent, attendees are selected manually, newly created players can be added inline and auto-selected as present, and removing a player from the attendee list must also remove any temporary "bueno" mark for that match.
+
+`sorteoBalanceado(players, pairs?)` accepts an optional second argument: an array of `[playerIdA, playerIdB]` tuples representing manual matchups. For each pair, the function picks the assignment (A→teamA/B→teamB or A→teamB/B→teamA) that minimizes the global level-weight imbalance (`bueno=3, tranqui=2, malo=1`), with random tie-break. Unpaired players then go through the classic level-based alternation, starting from the (already partially filled) team arrays. With no pairs (or an empty array) the algorithm behaves identically to the previous version — keep this contract intact.
 
 ## Supabase
 
@@ -180,6 +185,8 @@ For Vercel previews, add an appropriate preview redirect URL pattern in Supabase
 - Group membership by email depends on `user_profiles` plus SQL functions in `supabase-schema.sql`; the schema also backfills/syncs `user_profiles` from `auth.users`, and the frontend keeps the client-side sync as a compatible fallback. The member-management functions must keep all `group_members` column references qualified (`gm.user_id`, etc.) to avoid PL/pgSQL ambiguity with output-column names. Keep this flow browser-safe and do not add service-role keys to the frontend.
 - In `/sorteo`, preserve the current interaction model: default attendance is empty, `selected` is the source of truth for attendees, best-player toggles must stay disabled for absent players, and quick-created players should be added as `tranqui` and marked present immediately.
 - In `/sorteo`, any share action must use the currently sorted teams only and must not introduce extra persistence in Supabase.
+- The pairing mode in `/sorteo` is opt-in and stateless across sessions. Pairs live only in the page state and must not be written to Supabase. Same-level "validation" stays as a non-blocking visual hint; do not turn it into a hard restriction. Deselecting a paired player must drop them from any pair they were in, and exiting the mode (or "Vaciar pares") clears all pairs.
+- When extending `sorteoBalanceado`, do not break the no-pairs path: callers that omit the second argument (or pass `[]`) must get the original behavior unchanged. New variants of the algorithm should keep the same `{ teamA, teamB }` return shape.
 - Preserve the Spanish UI copy and the informal football vocabulary already used in the app.
 - Prefer the existing `@/` import alias and local domain types from `src/types`.
 - Do not bypass RLS assumptions by adding service-role logic to the frontend.
