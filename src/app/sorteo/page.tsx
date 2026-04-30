@@ -5,8 +5,9 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireEditor from "@/components/RequireEditor";
 import GroupSetup from "@/components/GroupSetup";
 import { useGroupContext } from "@/contexts/GroupContext";
-import { addPlayer, getPlayers, createMatchDay, getRecentMvpForm } from "@/lib/db";
+import { addPlayer, getPlayers, createMatchDay, getRecentMvpForm, getSavedPairs, savePairs, getMatchDays } from "@/lib/db";
 import { sorteoBalanceado } from "@/lib/sorteo";
+import { suggestPairs } from "@/lib/pairingUtils";
 import { Player, MvpFormData } from "@/types";
 import { computeMvpForm } from "@/lib/mvpForm";
 import MvpFormArrow from "@/components/MvpFormArrow";
@@ -105,16 +106,22 @@ export default function SorteoPage() {
   const [copyStatus, setCopyStatus] = useState<"copied" | "error" | null>(null);
   const [pairingMode, setPairingMode] = useState(false);
   const [manualPairs, setManualPairs] = useState<Array<[string, string]>>([]);
+  const [savedPairs, setSavedPairs] = useState<Array<[string, string]>>([]);
+  const [lastMatchDay, setLastMatchDay] = useState<{ teamA: string[]; teamB: string[] } | null>(null);
 
   const load = useCallback(async () => {
     if (!activeGroup) return;
     setLoading(true);
-    const [p, mvpForm] = await Promise.all([
+    const [p, mvpForm, saved, matchDays] = await Promise.all([
       getPlayers(activeGroup.id),
       getRecentMvpForm(activeGroup.id),
+      getSavedPairs(activeGroup.id),
+      getMatchDays(activeGroup.id),
     ]);
     setPlayers(p);
     setFormData(mvpForm);
+    setSavedPairs(saved);
+    setLastMatchDay(matchDays[0] ? { teamA: matchDays[0].teamA, teamB: matchDays[0].teamB } : null);
     setSelected(new Set());
     setBestPlayers(new Set());
     setTeamA([]);
@@ -267,6 +274,10 @@ export default function SorteoPage() {
       mvpPlayerIds: [],
       createdAt: Date.now(),
     });
+    if (pairingMode && manualPairs.length > 0) {
+      await savePairs(activeGroup.id, manualPairs);
+      setSavedPairs(manualPairs);
+    }
     setSaving(false);
     setSaved(true);
   };
@@ -482,6 +493,11 @@ export default function SorteoPage() {
                       <button
                         type="button"
                         onClick={() => {
+                          const presentIds = new Set(
+                            players.filter((p) => selected.has(p.id)).map((p) => p.id)
+                          );
+                          const suggested = suggestPairs(presentIds, savedPairs, lastMatchDay, formData);
+                          setManualPairs(suggested);
                           setPairingMode(true);
                           setSorted(false);
                           setSaved(false);

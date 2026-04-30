@@ -729,6 +729,7 @@ grant execute on function public.close_mvp_poll(uuid) to authenticated;
 
 alter table groups add column if not exists public_code text;
 alter table groups add column if not exists code_created_at timestamptz;
+alter table groups add column if not exists saved_pairs jsonb not null default '[]';
 
 create unique index if not exists groups_public_code_key on groups (public_code)
   where public_code is not null;

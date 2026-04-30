@@ -577,3 +577,28 @@ export async function getMvpPollResultsByMatchDay(
   if (!data) return null;
   return getMvpPollResults(data.id as string);
 }
+
+export async function getSavedPairs(
+  groupId: string
+): Promise<Array<[string, string]>> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("groups")
+    .select("saved_pairs")
+    .eq("id", groupId)
+    .single();
+  if (error) throw error;
+  return (data?.saved_pairs ?? []) as Array<[string, string]>;
+}
+
+export async function savePairs(
+  groupId: string,
+  pairs: Array<[string, string]>
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("groups")
+    .update({ saved_pairs: pairs })
+    .eq("id", groupId);
+  if (error) throw error;
+}
