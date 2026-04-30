@@ -10,6 +10,7 @@ import { sorteoBalanceado } from "@/lib/sorteo";
 import { Player, MvpFormData } from "@/types";
 import { computeMvpForm } from "@/lib/mvpForm";
 import MvpFormArrow from "@/components/MvpFormArrow";
+import PairingBoard from "@/components/PairingBoard";
 
 const EMPTY_FORM: MvpFormData = {
   totals: {},
@@ -102,6 +103,8 @@ export default function SorteoPage() {
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [addPlayerError, setAddPlayerError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<"copied" | "error" | null>(null);
+  const [pairingMode, setPairingMode] = useState(false);
+  const [manualPairs, setManualPairs] = useState<Array<[string, string]>>([]);
 
   const load = useCallback(async () => {
     if (!activeGroup) return;
@@ -118,6 +121,8 @@ export default function SorteoPage() {
     setTeamB([]);
     setSorted(false);
     setSaved(false);
+    setPairingMode(false);
+    setManualPairs([]);
     setLoading(false);
   }, [activeGroup]);
 
@@ -146,6 +151,9 @@ export default function SorteoPage() {
           best.delete(id);
           return best;
         });
+        setManualPairs((current) =>
+          current.filter(([a, b]) => a !== id && b !== id)
+        );
       } else {
         next.add(id);
       }
@@ -179,6 +187,8 @@ export default function SorteoPage() {
   const selectNone = () => {
     setSelected(new Set());
     setBestPlayers(new Set());
+    setManualPairs([]);
+    setPairingMode(false);
     setSorted(false);
     setSaved(false);
     setCopyStatus(null);
@@ -235,7 +245,9 @@ export default function SorteoPage() {
       }) satisfies Player);
 
     if (attending.length < 2) return;
-    const { teamA: a, teamB: b } = sorteoBalanceado(attending);
+    const pairsForSorteo =
+      pairingMode && manualPairs.length > 0 ? manualPairs : undefined;
+    const { teamA: a, teamB: b } = sorteoBalanceado(attending, pairsForSorteo);
     setTeamA(a);
     setTeamB(b);
     setSorted(true);
@@ -436,15 +448,60 @@ export default function SorteoPage() {
 
               {players.length >= 2 ? (
                 <>
-                  <div className="mb-6 flex flex-col gap-3 sm:flex-row">
-                    <button
-                      onClick={handleSorteo}
-                      disabled={selected.size < 2}
-                      className="btn-primary flex-1 text-lg"
-                    >
-                      Sortear equipos
-                    </button>
-                    {sorted && !saved && (
+                  {pairingMode ? (
+                    <PairingBoard
+                      presentPlayers={players.filter((p) => selected.has(p.id))}
+                      bestPlayerIds={bestPlayers}
+                      formData={formData}
+                      pairs={manualPairs}
+                      onPairsChange={(pairs) => {
+                        setManualPairs(pairs);
+                        setSorted(false);
+                        setSaved(false);
+                        setCopyStatus(null);
+                      }}
+                      onExit={() => {
+                        setPairingMode(false);
+                        setManualPairs([]);
+                        setSorted(false);
+                        setSaved(false);
+                        setCopyStatus(null);
+                      }}
+                      onSorteo={handleSorteo}
+                      canSorteo={selected.size >= 2}
+                    />
+                  ) : (
+                    <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+                      <button
+                        onClick={handleSorteo}
+                        disabled={selected.size < 2}
+                        className="btn-primary flex-1 text-lg"
+                      >
+                        Sortear equipos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPairingMode(true);
+                          setSorted(false);
+                          setSaved(false);
+                          setCopyStatus(null);
+                        }}
+                        disabled={selected.size < 4}
+                        className="btn-secondary"
+                        title={
+                          selected.size < 4
+                            ? "Necesitas al menos 4 presentes para enfrentar manualmente"
+                            : undefined
+                        }
+                      >
+                        Enfrentar manualmente
+                      </button>
+                    </div>
+                  )}
+
+                  {sorted && !saved && (
+                    <div className="mb-6">
                       <button
                         onClick={handleSave}
                         disabled={saving}
@@ -452,13 +509,15 @@ export default function SorteoPage() {
                       >
                         {saving ? "Guardando..." : "Guardar partido"}
                       </button>
-                    )}
-                    {saved && (
-                      <span className="surface-solid flex items-center px-4 py-3 font-bold text-fijo-700">
+                    </div>
+                  )}
+                  {saved && (
+                    <div className="mb-6">
+                      <span className="surface-solid inline-flex items-center px-4 py-3 font-bold text-fijo-700">
                         Guardado
                       </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {sorted && (
                     <div className="space-y-4">
