@@ -150,6 +150,7 @@ export default function PartidosPage() {
               {matchDays.map((md) => {
                 const poll = getPollForMatch(md.id);
                 const results = poll ? (pollResults[poll.id] ?? null) : null;
+                const canEdit = !poll && md.mvpPlayerIds.length === 0;
 
                 return (
                   <article key={md.id} className="surface p-5">
@@ -169,6 +170,14 @@ export default function PartidosPage() {
                           <span className="level-pill border border-fijo-100 bg-white text-[var(--muted)]">
                             Sin resultado
                           </span>
+                        )}
+                        {canEdit && (
+                          <Link
+                            href={`/partidos/${md.id}/editar`}
+                            className="rounded-md px-3 py-2 text-sm font-bold text-[var(--muted)] hover:bg-fijo-50 hover:text-fijo-900"
+                          >
+                            Editar
+                          </Link>
                         )}
                         <button
                           onClick={() => handleDelete(md.id)}

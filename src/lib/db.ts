@@ -369,6 +369,31 @@ export async function getMatchDays(groupId: string): Promise<MatchDay[]> {
   }));
 }
 
+export async function getMatchDayById(
+  matchDayId: string
+): Promise<(MatchDay & { groupId: string }) | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("match_days")
+    .select("*")
+    .eq("id", matchDayId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    groupId: data.group_id,
+    date: data.date,
+    attendees: data.attendees ?? [],
+    teamA: data.team_a ?? [],
+    teamB: data.team_b ?? [],
+    winner: data.winner as "A" | "B" | null,
+    mvpPlayerIds: data.mvp_player_ids ?? [],
+    createdAt: new Date(data.created_at).getTime(),
+  };
+}
+
 export async function updateMatchDay(
   groupId: string,
   matchDayId: string,
@@ -377,6 +402,7 @@ export async function updateMatchDay(
   const supabase = createClient();
   const update: Record<string, unknown> = {};
   if (data.winner !== undefined) update.winner = data.winner;
+  if (data.date) update.date = data.date;
   if (data.attendees) update.attendees = data.attendees;
   if (data.teamA) update.team_a = data.teamA;
   if (data.teamB) update.team_b = data.teamB;
@@ -450,6 +476,20 @@ export async function getMvpPollById(pollId: string): Promise<MvpPoll | null> {
     .eq("id", pollId)
     .single();
   if (error) return null;
+  return rowToMvpPoll(data as Record<string, unknown>);
+}
+
+export async function getMvpPollByMatchDay(
+  matchDayId: string
+): Promise<MvpPoll | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("mvp_polls")
+    .select("*")
+    .eq("match_day_id", matchDayId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
   return rowToMvpPoll(data as Record<string, unknown>);
 }
 
